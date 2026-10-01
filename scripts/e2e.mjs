@@ -195,6 +195,25 @@ async function testMv(browserType, label) {
 
 async function launcherShot(browserType, label) {
   const { browser, page } = await newPage(browserType, label);
+  // 診断：Cache Storage に各種の本文を保存して読み戻せるか
+  console.log(label, "cache test:", await page.evaluate(async () => {
+    const c = await caches.open("diag");
+    const out = [];
+    const file = new File([new Uint8Array(3000).fill(7)], "x.bin");
+    const cases = { string: () => "hello", bytes: () => new Uint8Array(1000).fill(1), blob: () => new Blob([new Uint8Array(2000)]),
+      fileSlice: () => file.slice(0, 2500), stream: () => new Blob([new Uint8Array(1500)]).stream() };
+    for (const [k, mk] of Object.entries(cases)) {
+      try {
+        const url = location.origin + "/diag/" + k;
+        await c.put(url, new Response(mk()));
+        const r = await c.match(url);
+        out.push(k + "=" + (r ? (await r.arrayBuffer()).byteLength : "miss"));
+      } catch (e) { out.push(k + "=err " + e.message); }
+    }
+    out.push("keys=" + (await c.keys()).length);
+    await caches.delete("diag");
+    return out.join(" ");
+  }).catch((e) => "err " + e.message));
   await shot(page, label + "-launcher");
   await browser.close();
 }
