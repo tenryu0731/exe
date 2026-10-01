@@ -78,6 +78,9 @@
   .status.err { color: var(--danger); }
   .game-title { font-weight: 600; word-break: break-all; }
   .game-meta { font-size: 13px; color: var(--muted); }
+  .kind { font-size: 13px; margin-top: 6px; padding: 6px 8px; border-radius: 8px; background: var(--bg); color: var(--text); }
+  .kind-no { background: var(--warn-bg); color: var(--warn-text); }
+  .kind-hard { background: var(--warn-bg); color: var(--warn-text); }
   .note { background: var(--warn-bg); color: var(--warn-text); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
   #version { font-size: 13px; }
   #changes h3 { font-size: 14px; margin: 10px 0 2px; }
@@ -333,12 +336,13 @@ $("picker").addEventListener("change", async (e) => {
     if (!navigator.storage || !navigator.storage.getDirectory) {
       throw new Error("このブラウザはファイル保存（OPFS）に未対応です。iOS / Safari を更新してください");
     }
-    let exes, msg;
+    let exes, msg, allNames = [];
     if (/\.exe$/i.test(file.name)) {
       exes = [file.name];
       msg = { op: "wrapExe", file, id, name: file.name };
     } else {
       const index = await readZipIndex(file);
+      allNames = index.entries.map((x) => x.name);
       exes = index.entries.filter((x) => !x.dir && isExe(x.name)).map((x) => x.name);
       if (!exes.length) throw new Error("ZIP の中に .exe が見つかりません");
       if (index.needsRename) {
@@ -357,7 +361,8 @@ $("picker").addEventListener("change", async (e) => {
     });
 
     const list = loadMeta();
-    list.unshift({ id, title: file.name.replace(/\.(zip|exe)$/i, ""), exes, exe: exes[0],
+    const kind = msg.op === "wrapExe" ? { name: "単体EXE", verdict: "ok", note: "" } : detectGameKind(allNames);
+    list.unshift({ id, title: file.name.replace(/\.(zip|exe)$/i, ""), exes, exe: exes[0], kind,
       engine: "jit", resolution: "", bpp: "32", sound: true, japanese: true, size, added: Date.now() });
     saveMeta(list);
     st.className = "status ok";
@@ -371,6 +376,37 @@ $("picker").addEventListener("change", async (e) => {
     pick.disabled = false;
   }
 });
+
+// ---------- ゲームエンジンの判別 ----------
+// verdict: ok=動く見込みあり / hard=重い・不安定 / no=この方式ではほぼ動かない
+function detectGameKind(names) {
+  const lower = names.map((n) => n.toLowerCase());
+  const has = (re) => lower.some((n) => re.test(n));
+  if (has(/(^|\/)js\/rmmz_core\.js$/)) return { name: "RPGツクールMZ", verdict: "no",
+    note: "中身は HTML5（NW.js）製。Wine 経由では動きませんが、ブラウザで直接動かせる可能性があります" };
+  if (has(/(^|\/)js\/rpg_core\.js$/)) return { name: "RPGツクールMV", verdict: "no",
+    note: "中身は HTML5（NW.js）製。Wine 経由では動きませんが、ブラウザで直接動かせる可能性があります" };
+  if (has(/(^|\/)unityplayer\.dll$/) || has(/_data\/(globalgamemanagers|data\.unity3d|resources\.assets)$/)) return { name: "Unity", verdict: "no",
+    note: "多くが Direct3D 11 以降を使うため、この方式ではほぼ動きません" };
+  if (has(/(^|\/)engine\/binaries\//)) return { name: "Unreal Engine", verdict: "no", note: "重すぎるため動きません" };
+  if (has(/(^|\/)resources\/app\.asar$/) || has(/(^|\/)nw\.dll$/) || has(/(^|\/)package\.nw$/)) return { name: "Electron / NW.js（HTML5）", verdict: "no",
+    note: "Chromium ベースのため Wine 経由では動きません" };
+  if (has(/\.pck$/)) return { name: "Godot", verdict: "hard", note: "OpenGL 3 系が必要で動かない可能性が高いです" };
+  if (has(/\.rgss3a$/) || has(/rgss3\d*[a-z]?\.dll$/)) return { name: "RPGツクールVX Ace", verdict: "ok", note: "動く見込みがあります（重い場合あり）" };
+  if (has(/\.rgss2a$/) || has(/rgss2\d*[a-z]?\.dll$/)) return { name: "RPGツクールVX", verdict: "ok", note: "動く見込みがあります" };
+  if (has(/\.rgssad$/) || has(/rgss1\d*[a-z]?\.dll$/)) return { name: "RPGツクールXP", verdict: "ok", note: "動く見込みがあります" };
+  if (has(/\.wolf$/)) return { name: "WOLF RPGエディター", verdict: "ok", note: "動く見込みがあります" };
+  if (has(/(^|\/)rpg_rt\.exe$/)) return { name: "RPGツクール2000/2003", verdict: "ok", note: "動く見込みがあります" };
+  if (has(/(^|\/)tyrano\//)) return { name: "ティラノスクリプト（HTML5）", verdict: "no", note: "Chromium ベースのため Wine 経由では動きません" };
+  if (has(/\.xp3$/)) return { name: "吉里吉里", verdict: "ok", note: "動く見込みがあります" };
+  return { name: "不明", verdict: "ok", note: "" };
+}
+
+async function gameFile(id) {
+  const root = await navigator.storage.getDirectory();
+  const dir = await root.getDirectoryHandle("games");
+  return (await dir.getFileHandle(id + ".zip")).getFile();
+}
 
 // ---------- ライブラリ表示 ----------
 function option(value, label, selected) {
@@ -411,7 +447,22 @@ function renderLibrary() {
     const meta = document.createElement("div");
     meta.className = "game-meta";
     meta.textContent = (g.size / 1048576).toFixed(1) + " MB";
-    card.append(title, meta);
+    const kindEl = document.createElement("div");
+    const showKind = (k) => {
+      kindEl.className = "kind kind-" + k.verdict;
+      kindEl.textContent = "種類: " + k.name + (k.note ? " — " + k.note : "");
+    };
+    if (g.kind) showKind(g.kind);
+    else {
+      kindEl.className = "kind";
+      kindEl.textContent = "種類: 判別中…";
+      gameFile(g.id).then(readZipIndex).then((idx) => {
+        const k = detectGameKind(idx.entries.map((x) => x.name));
+        update(g.id, { kind: k });
+        showKind(k);
+      }).catch(() => { kindEl.textContent = "種類: 判別できませんでした"; });
+    }
+    card.append(title, meta, kindEl);
 
     card.appendChild(selectField("起動する EXE", g.exes.map((x) => [x, x]), g.exe, (v) => update(g.id, { exe: v })));
     const adv = document.createElement("details");
