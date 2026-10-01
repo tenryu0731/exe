@@ -104,11 +104,18 @@ const RUNNABLE = /\.(exe|bat|msi|com)$/i;
 
 // 起動候補の並び順：インストーラや設定ツールを後ろに
 function exeScore(path) {
-  const base = path.split("/").pop().toLowerCase();
-  let s = path.split("/").length * 10;
-  if (/^(setup|install|unins|uninst|config|setting|patch|update|dxsetup|vcredist|directx)/.test(base)) s += 100;
+  const parts = path.split("/");
+  const base = parts.pop().toLowerCase();
+  const folder = (parts[parts.length - 1] || "").toLowerCase();
+  let s = parts.length * 10;
+  if (/^(setup|install|unins|uninst|config|setting|patch|update|dxsetup|dxwebsetup|vcredist|vc_redist|directx|oalinst|physx|dotnet|ndp)/.test(base)) s += 100;
+  // 付属ツール・ランタイムの再配布物・クラッシュ報告用
+  if (/(crash|report|redist|helper|uninstall|notification|bugreport|_setup)/.test(base)) s += 80;
+  if (parts.some((d) => /^(_?commonredist|redist|redistributables?|directx|vcredist|dotnet|support|tools?|__macosx)$/i.test(d))) s += 60;
   if (/\.(bat|msi|com)$/.test(base)) s += 50;
   if (/(game|start|launch|play)/.test(base)) s -= 5;
+  // フォルダ名と同じ名前の exe（MyGame/MyGame.exe）は本体であることが多い
+  if (folder && base.replace(/\.[^.]+$/, "") === folder) s -= 8;
   return s;
 }
 function sortTargets(list) {
@@ -202,6 +209,27 @@ function detectKind(names) {
   if (!has(/\.(exe|bat)$/) && has(/\.msi$/)) return { code: "msi", verdict: "ok", note: "note.msi" };
   return { code: "unknown", verdict: "ok", note: "" };
 }
+// RPG ツクール 2000/2003・XP・VX・VX Ace は、素材集（RTP）を別にインストールする前提のゲームがある。
+// 入っていないと起動時にエラーになるので、RTP が要りそうなら注意を出す。
+// readText(名前の正規表現) は ZIP / フォルダ内のテキストファイルを読む関数
+async function needsRtp(kind, names, readText) {
+  const lower = names.map((n) => n.toLowerCase());
+  try {
+    if (kind.code === "rm2k") {
+      const ini = await readText(/(^|\/)rpg_rt\.ini$/i);
+      return !(ini && /FullPackageFlag\s*=\s*1/i.test(ini));
+    }
+    if (kind.code === "vxace" || kind.code === "vx" || kind.code === "xp") {
+      const ini = await readText(/(^|\/)game\.ini$/i);
+      const rtp = ini && /^\s*RTP\d?\s*=\s*\S+/im.test(ini);
+      // 素材が同梱されていれば（暗号化アーカイブ内か Graphics/System）RTP 不要
+      const bundled = lower.some((n) => /graphics\/system\/window\.png$/.test(n));
+      return !!rtp && !bundled;
+    }
+  } catch (e) {}
+  return false;
+}
+
 function kindOf(names) {
   return Object.assign({ v: KIND_VERSION }, detectKind(names));
 }
@@ -211,6 +239,13 @@ function kindText(k) {
 
 // ---------- 追加 ----------
 // items: [{ file, path }]。1 つの ZIP / EXE / MSI はそのまま、それ以外は無圧縮 ZIP にまとめる
+// ファイル名にかな・漢字があれば日本語のソフトとみなす（UI が英語でも日本語ロケールで動かす。
+// そうしないと Shift_JIS の文字列やファイル名を扱う日本語ソフトが文字化け・起動失敗する）
+function looksJapanese(names, title) {
+  const re = /[\u3040-\u30ff\u3400-\u9fff\uff66-\uff9f]/;
+  return re.test(title || "") || names.some((n) => re.test(n));
+}
+
 async function addItems(items, title) {
   const st = $("add-status");
   const buttons = [$("pick"), $("pick-folder"), $("demo")];
@@ -221,17 +256,27 @@ async function addItems(items, title) {
   try {
     if (!navigator.storage || !navigator.storage.getDirectory) throw new Error(t("err.opfs"));
     const single = items.length === 1 ? items[0].file : null;
-    let targets, msg, kind, label;
+    let targets, msg, kind, label, names = [];
+    const arc = single && /\.(rar|7z|lzh|lha|cab|tar|gz|tgz|xz)$/i.exec(single.name);
+    if (arc) throw new Error(t("err.archive", { ext: arc[1].toUpperCase() }));
     if (single && /\.zip$/i.test(single.name)) {
       const index = await readZipIndex(single);
-      const names = index.entries.map((x) => x.name);
-      targets = index.entries.filter((x) => !x.dir && RUNNABLE.test(x.name)).map((x) => x.name);
+      names = index.entries.map((x) => x.name);
+      targets = index.entries.filter((x) => !x.dir && RUNNABLE.test(x.name) && !isJunkPath(x.name)).map((x) => x.name);
       kind = kindOf(names);
+      if (await needsRtp(kind, names, async (re) => {
+        const e = index.entries.find((x) => re.test(x.name));
+        return e ? new TextDecoder("shift_jis").decode(await zipEntryBytes(single, e)) : null;
+      })) kind.note = "note.rtp";
+      const bad = unsupportedEntry(index);
+      if (bad) throw new Error(t("err.method", { name: bad }));
       if (kind.html5Root !== undefined) {
         msg = html5Message(single, id, index, kind.html5Root);
         label = "add.extracting";
       } else if (!targets.length) {
         throw new Error(t("err.noexe"));
+      } else if (index.needsRename && index.zip64) {
+        throw new Error(t("err.zip64"));
       } else if (index.needsRename) {
         const enc = new TextEncoder();
         msg = { op: "rewrite", file: single, id, cd: index.cd,
@@ -242,11 +287,15 @@ async function addItems(items, title) {
         label = "add.saving";
       }
     } else {
-      const names = items.map((x) => x.path);
-      targets = names.filter((n) => RUNNABLE.test(n));
+      names = items.map((x) => x.path);
+      targets = names.filter((n) => RUNNABLE.test(n) && !isJunkPath(n));
       if (!targets.length) throw new Error(t("err.noexe"));
       kind = single ? { v: KIND_VERSION, code: /\.msi$/i.test(single.name) ? "msi" : "exe", verdict: "ok",
         note: /\.msi$/i.test(single.name) ? "note.msi" : "" } : kindOf(names);
+      if (!single && await needsRtp(kind, names, async (re) => {
+        const it = items.find((x) => re.test(x.path));
+        return it ? new TextDecoder("shift_jis").decode(await it.file.arrayBuffer()) : null;
+      })) kind.note = "note.rtp";
       msg = { op: "pack", id, entries: items.map((x) => ({ name: x.path, file: x.file })) };
       label = "add.packing";
     }
@@ -256,7 +305,8 @@ async function addItems(items, title) {
     });
     const list = loadMeta();
     list.unshift({ id, title, exes: targets, exe: targets[0], kind, mode: msg.op === "extract" ? "html5" : "wine",
-      engine: "jit", resolution: "", bpp: "32", sound: true, japanese: I18N.lang === "ja", size, added: Date.now() });
+      engine: "jit", resolution: "", bpp: "32", sound: true, japanese: I18N.lang === "ja" || looksJapanese(names, title),
+      size, added: Date.now() });
     saveMeta(list);
     st.className = "status ok";
     st.textContent = t("add.done", { name: title });
@@ -633,34 +683,36 @@ function saveControls(g) {
 
 // ---------- 起動 ----------
 // 起動するファイルの CPU 種別（PE ヘッダー）を見て、32bit エンジン / 64bit エンジン / DOS を振り分ける
-async function targetArch(g) {
+async function targetInfo(g) {
   try {
     const file = await gameFile(g.id);
     const idx = await readZipIndex(file);
     const e = idx.entries.find((x) => x.name === g.exe);
-    if (e && /\.com$/i.test(e.name)) return "dos";
-    return e && /\.exe$/i.test(e.name) ? await exeArch(file, e) : null;
+    if (e && /\.com$/i.test(e.name)) return { arch: "dos" };
+    return e && /\.exe$/i.test(e.name) ? await exeInfo(file, e) : { arch: null };
   } catch (err) {
-    return null;
+    return { arch: null };
   }
 }
 
 async function start(g, opts = {}) {
-  if (!opts.desktop) {
-    const want = g.cpu || "auto";
-    const arch = want === "auto" ? await targetArch(g) : want === "64" ? "x64" : "x86";
-    if (arch === "x64") {
-      location.href = "run64.html?id=" + encodeURIComponent(g.id) + "&exe=" + encodeURIComponent(g.exe);
-      return;
-    }
-    if (arch === "dos" && want === "auto") {
-      location.href = "dos.html?id=" + encodeURIComponent(g.id) + "&exe=" + encodeURIComponent(g.exe);
-      return;
-    }
+  if (opts.desktop) return launch(g, opts);
+  const want = g.cpu || "auto";
+  const info = await targetInfo(g);
+  const arch = want === "auto" ? info.arch : want === "64" ? "x64" : "x86";
+  if (arch === "os2") return alert(t("err.os2"));
+  if (arch === "arm64") return alert(t("err.arm64"));
+  if (info.dotnet && !confirm(t("warn.dotnet"))) return;
+  if (arch === "x64") {
+    location.href = "run64.html?id=" + encodeURIComponent(g.id) + "&exe=" + encodeURIComponent(g.exe);
+    return;
   }
-  launch(g, opts);
+  if (arch === "dos" && want === "auto") {
+    location.href = "dos.html?id=" + encodeURIComponent(g.id) + "&exe=" + encodeURIComponent(g.exe);
+    return;
+  }
+  launch(g, Object.assign({ console: !!info.console }, opts));
 }
-
 function launch(g, opts = {}) {
   const target = g.exe || "";
   const slash = target.lastIndexOf("/");
@@ -678,10 +730,15 @@ function launch(g, opts = {}) {
   ];
   if (opts.desktop) params.push("desktop=true");
   else if (/\.msi$/i.test(file)) params.push("p=msiexec", "args=" + encodeURIComponent('/i "' + file + '"'));
+  // コンソール（文字だけの）アプリは、そのまま起動すると画面に何も出ないので Wine のコンソール窓で開く
+  else if (opts.console) params.push("p=wineconsole", "args=" + encodeURIComponent('"' + file + '"'));
+  // バッチファイルも同様に、実行中の表示（echo や pause）が見えるようコンソール窓で開く
+  else if (/\.bat$/i.test(file)) params.push("p=wineconsole", "args=" + encodeURIComponent('cmd /c "' + file + '"'));
   else params.push("p=" + encodeURIComponent(file));
   if (g.resolution) params.push("resolution=" + g.resolution);
-  // Boxedwine の env 引数は 'KEY:VALUE' をクォートした形式
-  if (g.japanese) params.push("env=%27LANG:ja_JP.UTF-8%27");
+  // Boxedwine の env 引数は 'KEY:VALUE' をクォートした形式（1 つだけ）。Boxedwine は既定で
+  // LC_ALL=en_US.UTF-8 を足すので、LANG ではなく LC_ALL で指定しないと日本語ロケールにならない
+  if (g.japanese) params.push("env=%27LC_ALL:ja_JP.UTF-8%27");
   const engine = g.engine === "compat" ? "compat" : "jit";
   location.href = "engine/" + engine + "/boxedwine.html?" + params.join("&");
 }

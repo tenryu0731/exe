@@ -1,5 +1,26 @@
 [
   {
+    "date": "2026-10-02 (2)",
+    "items": [
+      "日本語のゲーム・アプリで文字が □ になる問題を修正（日本語フォントを同梱）",
+      "日本語モードが実際には効いていなかった問題を修正。日本語のファイル名を含むソフトは自動で日本語モードで起動",
+      "コンソール（文字だけの）アプリと .bat が真っ黒な画面になる問題を修正（コンソール窓で開く）",
+      "Windows 3.1 用（16bit）の exe が DOS 扱いになる問題を修正",
+      "区切りに「\\」を使った ZIP、4GB 超・6.5 万ファイル超の ZIP（ZIP64）に対応",
+      "起動する exe の自動選択を改善（クラッシュ報告用・再配布ランタイムなどを後ろに）",
+      "非対応の圧縮方式・RAR/7z・.NET 製・RTP が必要なツクール作品を、追加時や起動前に知らせるように"
+    ],
+    "items_en": [
+      "Fixed Japanese text showing as boxes (a Japanese font is now included)",
+      "Japanese mode did not actually take effect; fixed. Software with Japanese file names now starts in Japanese mode automatically",
+      "Console programs and .bat files no longer show a black screen (they open in a console window)",
+      "16-bit Windows 3.1 programs were treated as DOS; fixed",
+      "Support ZIPs that use backslashes and ZIP64 archives (over 4 GB or 65,535 files)",
+      "Better choice of which exe to start (crash reporters and redistributables go last)",
+      "Warn about unsupported compression, RAR/7z, .NET programs and RPG Maker games that need the RTP"
+    ]
+  },
+  {
     "date": "2026-10-02",
     "items": [
       "Wine のダウンロードを 45MB ごとに保存するように。途中で止まっても、次は続きから再開（最初からやり直さない）",

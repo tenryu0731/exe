@@ -22,6 +22,8 @@ env:
   ENGINE64_COMMIT: 97c6294d84f7008fe8f96ab2ee686d7eab25b923
   # Wine 11 ファイルシステム（配布元で更新されることがあるため、ハッシュ固定ではなく内容を検査する）
   FS_URL: https://boxedwine.org/v2/11/TinyCore15Wine11.0.zip
+  GOOGLE_FONTS_COMMIT: 9710da1eacb3be272583c3224dcb70f9da6eadbb
+  KOSUGI_SHA256: f5e81d6a6b865d9b88c54d2d3c16bcaa3b239dfcefaf2a62976ac9dc7574bab7
 
 jobs:
   build:
@@ -89,6 +91,12 @@ jobs:
           # .update-timestamp を UTC 解釈に合わせる（ファイルの削減は行わず完全版を配信。削減する場合は --prune）
           python3 scripts/prepare-filesystem.py fs-download/boxedwine.zip fs-download/fixed.zip
           mv fs-download/fixed.zip fs-download/boxedwine.zip
+          # 日本語環境（ja_JP ロケールと、MS ゴシック等の名前で引ける Kosugi フォント）を追加
+          pip install -q fonttools==4.66.1
+          curl -fsSL --retry 5 -o fs-download/Kosugi-Regular.ttf "https://raw.githubusercontent.com/google/fonts/$GOOGLE_FONTS_COMMIT/apache/kosugi/Kosugi-Regular.ttf"
+          curl -fsSL --retry 5 -o fs-download/Kosugi-LICENSE.txt "https://raw.githubusercontent.com/google/fonts/$GOOGLE_FONTS_COMMIT/apache/kosugi/LICENSE.txt"
+          echo "$KOSUGI_SHA256  fs-download/Kosugi-Regular.ttf" | sha256sum -c -
+          python3 scripts/add-japanese.py fs-download/Kosugi-Regular.ttf fs-download/Kosugi-LICENSE.txt fs-download/boxedwine.zip
           echo "FS_SHA256=$(sha256sum fs-download/boxedwine.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       - name: Assemble site
@@ -141,7 +149,7 @@ jobs:
   e2e:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -160,5 +168,11 @@ jobs:
           npm init -y >/dev/null
           npm install playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium webkit
+      - name: Build probe app
+        run: |
+          sudo apt-get install -y -q gcc-mingw-w64-i686 >/dev/null
+          i686-w64-mingw32-gcc -O1 -o /tmp/probe.exe scripts/probe/probe.c -mwindows -lgdi32
+          python3 scripts/probe/make-zip.py /tmp/probe.exe /tmp/probe.zip
+
       - name: Run E2E
         run: node scripts/e2e.mjs http://localhost:8765/exe/

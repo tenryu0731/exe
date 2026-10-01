@@ -116,6 +116,31 @@ async function testWineDemo(browserType, label) {
   await browser.close();
 }
 
+// 確認アプリ（scripts/probe）：日本語フォルダ・保存・DirectX・日本語フォントなどを Wine 上で試す。
+// CI で /tmp/probe.zip を作ってあるときだけ実行。Wine Mono（.NET）は入れていないので NG でよい
+async function testProbe(browserType, label) {
+  if (!fs.existsSync("/tmp/probe.zip")) return;
+  const { browser, page, logs } = await newPage(browserType, label);
+  const t0 = Date.now();
+  try {
+    await addFile(page, "/tmp/probe.zip");
+    await Promise.all([page.waitForURL(/engine\/jit\/boxedwine\.html/, { timeout: 120000 }), page.locator("#library button.primary").first().click()]);
+    const rounds = Number(process.env.E2E_WINE_ROUNDS || 40);
+    for (let i = 0; i < rounds && !logs.some((l) => /PROBE (OK|NG) font Meiryo/.test(l)); i++) await page.waitForTimeout(15000);
+    await page.waitForTimeout(5000);
+    const lines = logs.filter((l) => l.startsWith("PROBE "));
+    console.log(label, "probe:\n" + lines.join("\n"));
+    await shot(page, label + "-probe");
+    const ng = lines.filter((l) => l.startsWith("PROBE NG") && !/Wine Mono/.test(l));
+    results.push([label + " probe (Japanese, saves, DirectX, fonts)", lines.length >= 25 && ng.length === 0,
+      ng.join(" / ") || lines.length + " checks", Math.round((Date.now() - t0) / 1000) + "s"]);
+  } catch (e) {
+    results.push([label + " probe", false, e.message]);
+    await shot(page, label + "-probe-error").catch(() => {});
+  }
+  await browser.close();
+}
+
 async function testDos(browserType, label) {
   const { browser, page } = await newPage(browserType, label);
   try {
@@ -157,6 +182,7 @@ for (const [type, label] of [[webkit, "webkit"], [chromium, "chromium"]].filter(
   await testMv(type, label);
   await testDos(type, label);
   await testWineDemo(type, label);
+  await testProbe(type, label);
 }
 
 console.log("\n==== E2E RESULTS ====");
