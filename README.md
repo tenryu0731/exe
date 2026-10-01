@@ -29,11 +29,15 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 | `site/mobile.js`, `mobile.css` | エミュレーター画面に注入するスマホ用UI（仮想キー等） |
 | `scripts/patch-shell.py` | Boxedwine の Web シェルに上記UIを差し込み、ZIP をメモリ上で複製しないよう改変。ZIP内の時刻をUTCで解釈 |
 | `scripts/prepare-filesystem.py` | Wine 本体から実行に不要なファイルを除き（上流 Boxedwine の Web 版と同じ規則、`web_runtime_policy.json`）、`.update-timestamp` を上記に合わせる |
+| `site/run64.html`, `run64.js` | 64bit の exe を wine64（Boxedwine64、`scripts/fetch-engine64.sh` で WindowsAppPlayer から取得）で動かす |
+| `site/dos.html` | DOS の exe / com を DOSBox（js-dos の emulators、`site/vendor/js-dos/`）で動かす |
 | `.github/workflows/deploy.yml` | Boxedwine（JIT版・互換版）のビルドと Pages への配備 |
 
 ## 制限
 
 - RPGツクールMV/MZ は Wine を使わず、ゲーム本体（HTML5）をブラウザで直接動かす
+- 64bit の exe は試験的な wine64 エンジン（WebAssembly Memory64 とマルチスレッドが必要。iPhone では動かない見込み）
+- DOS の exe / com は DOSBox で動かす
 - それ以外の主な対象は軽い 2D の古いゲーム。Direct3D 10 以降は非対応（Boxedwine 26R2 の changeLog より）
 - iPhone のメモリ・CPU 次第で、起動しない／非常に遅いことがある
 - 日本語フォントが Wine のファイルシステムに含まれていない場合、日本語が文字化け（□）する可能性あり（未検証）

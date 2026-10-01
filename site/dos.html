@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>EXE Launcher — DOS</title>
+<style>
+  :root { --bg: #101418; --panel: #1c232b; --key: #2b3540; --key-on: #3f6fd8; --text: #f2f5f8; --muted: #b8c3cf; --border: #46525f; --err: #ff9a8f; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body { display: flex; flex-direction: column; font: 14px/1.4 system-ui, -apple-system, "Hiragino Sans", sans-serif; }
+  #bar { display: flex; gap: 8px; align-items: center; padding: 8px; padding-top: max(8px, env(safe-area-inset-top));
+    background: var(--panel); border-bottom: 1px solid var(--border); }
+  #bar a, #bar button { color: var(--text); background: var(--key); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; text-decoration: none; font: inherit; }
+  #status { flex: 1; color: var(--muted); min-width: 0; }
+  #status.err { color: var(--err); }
+  #screen { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; touch-action: none; }
+  canvas { image-rendering: pixelated; outline: none; }
+  #keys { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; padding: 6px 8px max(8px, env(safe-area-inset-bottom));
+    background: var(--panel); border-top: 1px solid var(--border); user-select: none; -webkit-user-select: none; }
+  #keys.hidden { display: none; }
+  #keys button { min-height: 42px; color: var(--text); background: var(--key); border: 1px solid var(--border); border-radius: 8px;
+    font: 600 15px/1 system-ui, sans-serif; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  #keys button.on { background: var(--key-on); }
+  #type { position: fixed; left: -1000px; top: 0; width: 10px; height: 10px; opacity: 0; }
+</style>
+</head>
+<body>
+  <div id="bar"><a href="./" id="back"></a><button id="toggle-keys"></button><button id="type-btn"></button><span id="status"></span></div>
+  <div id="screen"><canvas id="canvas" tabindex="0" width="640" height="400"></canvas></div>
+  <div id="keys"></div>
+  <input id="type" type="text" autocapitalize="off" autocomplete="off" spellcheck="false">
+<script src="i18n.js"></script>
+<script src="zip.js"></script>
+<script>
+"use strict";
+// DOS の exe / com を DOSBox（js-dos の emulators、vendor/js-dos、GPL-2.0）で動かす。
+// js-dos の UI 層は使わず、emulators の CommandInterface で描画・入力・音声を直接扱う（ExeBrowser の dos-embed.js と同じ方式）。
+(async function () {
+  const en = window.I18N && window.I18N.lang === "en";
+  const L = en
+    ? { back: "← Back", keys: "Keys", type: "Type", reading: "Reading the app…", starting: "Starting DOSBox…",
+        running: "Running {name} (DOS) — tap the screen for sound", failed: "Failed: {msg}" }
+    : { back: "← 戻る", keys: "キー", type: "文字入力", reading: "アプリを読み込み中…", starting: "DOSBox を起動中…",
+        running: "{name} を実行中（DOS）— 画面をタップすると音が出ます", failed: "失敗しました: {msg}" };
+  const fmt = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
+  const $ = (id) => document.getElementById(id);
+  const status = (s, err) => { $("status").textContent = s; $("status").className = err ? "err" : ""; };
+  $("back").textContent = L.back;
+  $("toggle-keys").textContent = L.keys;
+  $("type-btn").textContent = L.type;
+
+  // DOM の keyCode → DOSBox（GLFW 方式）のキーコード
+  const GLFW = { 8: 259, 9: 258, 13: 257, 16: 340, 17: 341, 18: 342, 19: 284, 20: 280, 27: 256, 32: 32, 33: 266, 34: 267,
+    35: 269, 36: 268, 37: 263, 38: 265, 39: 262, 40: 264, 45: 260, 46: 261, 186: 59, 187: 61, 188: 44, 189: 45, 190: 46,
+    191: 47, 192: 96, 219: 91, 220: 92, 221: 93, 222: 39 };
+  for (let c = 48; c <= 57; c++) GLFW[c] = c;
+  for (let c = 65; c <= 90; c++) GLFW[c] = c;
+  for (let i = 0; i < 12; i++) GLFW[112 + i] = 290 + i;
+
+  let ci = null;
+  const loadScript = (src) => new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error("load " + src));
+    document.head.appendChild(s);
+  });
+
+  try {
+    const params = new URLSearchParams(location.search);
+    const exe = params.get("exe") || "";
+    status(L.reading);
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("games");
+    const file = await (await dir.getFileHandle(params.get("id") + ".zip")).getFile();
+    const index = await readZipIndex(file);
+    const init = [];
+    for (const e of index.entries) if (!e.dir) init.push({ path: e.name, contents: await zipEntryBytes(file, e) });
+    const slash = exe.lastIndexOf("/");
+    const folder = slash >= 0 ? exe.slice(0, slash).replace(/\//g, "\\") : "";
+    const prog = slash >= 0 ? exe.slice(slash + 1) : exe;
+    const dosboxConf = ["[sdl]", "autolock=false", "[cpu]", "core=auto", "cycles=auto",
+      "[autoexec]", "mount c .", "c:", folder ? "cd \\" + folder : "", prog].filter((l) => l !== "").join("\n");
+    init.push({ dosboxConf, jsdosConf: { version: "js-dos-v8" } });
+
+    status(L.starting);
+    await loadScript("vendor/js-dos/emulators/emulators.js");
+    window.emulators.pathPrefix = "vendor/js-dos/emulators/";
+    ci = await window.emulators.dosboxWorker(init);
+
+    // 描画
+    const canvas = $("canvas");
+    const ctx = canvas.getContext("2d");
+    let fw = ci.width(), fh = ci.height();
+    // 表示エリアに収まる最大の大きさで、DOS 画面の縦横比（4:3）を保って表示する
+    const fit = () => {
+      const box = $("screen").getBoundingClientRect();
+      const scale = Math.min(box.width / 4, box.height / 3);
+      canvas.style.width = Math.floor(scale * 4) + "px";
+      canvas.style.height = Math.floor(scale * 3) + "px";
+    };
+    window.addEventListener("resize", fit);
+    const resize = (w, h) => { fw = w; fh = h; canvas.width = w; canvas.height = h; fit(); };
+    resize(fw || 640, fh || 400);
+    ci.events().onFrameSize((w, h) => resize(w, h));
+    ci.events().onFrame((rgb, rgba) => {
+      if (!fw || !fh) return;
+      const img = ctx.createImageData(fw, fh);
+      if (rgba) img.data.set(rgba.subarray(0, img.data.length));
+      else if (rgb) {
+        const d = img.data;
+        for (let i = 0, j = 0; i < rgb.length && j < d.length; i += 3, j += 4) {
+          d[j] = rgb[i]; d[j + 1] = rgb[i + 1]; d[j + 2] = rgb[i + 2]; d[j + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+    });
+
+    // 音声（最初のタップで AudioContext を作る）
+    let audio = null;
+    const queue = [];
+    function startAudio() {
+      if (audio) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audio = new AC({ sampleRate: ci.soundFrequency() || 44100 });
+      if (navigator.audioSession) try { navigator.audioSession.type = "playback"; } catch (e) {}
+      const node = audio.createScriptProcessor(2048, 0, 1);
+      node.onaudioprocess = (ev) => {
+        const out = ev.outputBuffer.getChannelData(0);
+        let o = 0;
+        while (o < out.length && queue.length) {
+          const head = queue[0];
+          const n = Math.min(head.length, out.length - o);
+          out.set(head.subarray(0, n), o);
+          o += n;
+          if (n === head.length) queue.shift(); else queue[0] = head.subarray(n);
+        }
+        out.fill(0, o);
+      };
+      node.connect(audio.destination);
+    }
+    ci.events().onSoundPush((samples) => { if (audio) { queue.push(samples); if (queue.length > 32) queue.shift(); } });
+
+    // キーボード
+    const send = (code, down) => { const k = GLFW[code]; if (k) ci.sendKeyEvent(k, down); };
+    window.addEventListener("keydown", (e) => { if (GLFW[e.keyCode]) { e.preventDefault(); send(e.keyCode, true); } });
+    window.addEventListener("keyup", (e) => { if (GLFW[e.keyCode]) { e.preventDefault(); send(e.keyCode, false); } });
+
+    // マウス（相対移動）とタップ
+    let last = null;
+    canvas.addEventListener("pointerdown", (e) => {
+      startAudio();
+      if (audio && audio.state === "suspended") audio.resume();
+      canvas.focus();
+      last = { x: e.clientX, y: e.clientY };
+      ci.sendMouseButton(e.button === 2 ? 1 : 0, true);
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!last) { last = { x: e.clientX, y: e.clientY }; return; }
+      const r = canvas.getBoundingClientRect();
+      ci.sendMouseRelativeMotion((e.clientX - last.x) * fw / r.width, (e.clientY - last.y) * fh / r.height);
+      last = { x: e.clientX, y: e.clientY };
+    });
+    const up = (e) => { ci.sendMouseButton(e.button === 2 ? 1 : 0, false); if (e.pointerType !== "mouse") last = null; };
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", up);
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    // 仮想キー
+    const KEYS = [["Esc", 27], ["↑", 38], ["Enter", 13], ["Y", 89], ["N", 78], ["Space", 32],
+      ["←", 37], ["↓", 40], ["→", 39], ["Shift", 16], ["Ctrl", 17], ["Alt", 18],
+      ["1", 49], ["2", 50], ["3", 51], ["F1", 112], ["BS", 8], ["Tab", 9]];
+    const pad = $("keys");
+    for (const [label, code] of KEYS) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      const down = (e) => { e.preventDefault(); startAudio(); b.classList.add("on"); send(code, true); };
+      const release = (e) => { e.preventDefault(); if (b.classList.contains("on")) { b.classList.remove("on"); send(code, false); } };
+      b.addEventListener("pointerdown", down);
+      b.addEventListener("pointerup", release);
+      b.addEventListener("pointercancel", release);
+      b.addEventListener("pointerleave", release);
+      pad.appendChild(b);
+    }
+    if (!matchMedia("(pointer: coarse)").matches) pad.classList.add("hidden");
+    $("toggle-keys").addEventListener("click", () => { pad.classList.toggle("hidden"); fit(); });
+    fit();
+    const type = $("type");
+    $("type-btn").addEventListener("click", () => type.focus());
+    type.addEventListener("input", () => {
+      for (const ch of type.value.toUpperCase()) {
+        const code = ch === " " ? 32 : ch.charCodeAt(0);
+        if (GLFW[code]) { send(code, true); send(code, false); }
+      }
+      type.value = "";
+    });
+
+    canvas.focus();
+    status(fmt(L.running, { name: prog }));
+  } catch (e) {
+    status(fmt(L.failed, { msg: e.message }), true);
+  }
+})();
+</script>
+</body>
+</html>

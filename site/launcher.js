@@ -98,79 +98,19 @@ if (navigator.serviceWorker) {
   });
 }
 
-// ---------- ZIP の目次を読む（ZIP 全体は読み込まない） ----------
-const utf8 = new TextDecoder("utf-8", { fatal: true });
-let sjis = null;
-try { sjis = new TextDecoder("shift_jis"); } catch (e) {}
-
-const RUNNABLE = /\.(exe|bat|msi)$/i;
+const RUNNABLE = /\.(exe|bat|msi|com)$/i;
 
 // 起動候補の並び順：インストーラや設定ツールを後ろに
 function exeScore(path) {
   const base = path.split("/").pop().toLowerCase();
   let s = path.split("/").length * 10;
   if (/^(setup|install|unins|uninst|config|setting|patch|update|dxsetup|vcredist|directx)/.test(base)) s += 100;
-  if (/\.(bat|msi)$/.test(base)) s += 50;
+  if (/\.(bat|msi|com)$/.test(base)) s += 50;
   if (/(game|start|launch|play)/.test(base)) s -= 5;
   return s;
 }
 function sortTargets(list) {
   return list.sort((a, b) => exeScore(a) - exeScore(b) || a.localeCompare(b));
-}
-
-async function sliceBytes(file, start, end) {
-  return new Uint8Array(await file.slice(start, end).arrayBuffer());
-}
-
-async function readZipIndex(file) {
-  const tailLen = Math.min(file.size, 65536 + 22);
-  const tail = await sliceBytes(file, file.size - tailLen, file.size);
-  const tv = new DataView(tail.buffer);
-  let e = -1;
-  for (let i = tail.length - 22; i >= 0; i--) {
-    if (tv.getUint32(i, true) === 0x06054b50) { e = i; break; }
-  }
-  if (e < 0) throw new Error(t("err.notzip"));
-  const count = tv.getUint16(e + 10, true);
-  const size = tv.getUint32(e + 12, true);
-  const offset = tv.getUint32(e + 16, true);
-  if (count === 0xffff || size === 0xffffffff || offset === 0xffffffff) throw new Error(t("err.zip64"));
-  const cd = await sliceBytes(file, offset, offset + size);
-  const cv = new DataView(cd.buffer);
-  const entries = [];
-  let needsRename = false;
-  let p = 0;
-  while (p + 46 <= cd.length) {
-    if (cv.getUint32(p, true) !== 0x02014b50) throw new Error(t("err.zipbroken"));
-    const flags = cv.getUint16(p + 8, true);
-    const nameLen = cv.getUint16(p + 28, true);
-    const extraLen = cv.getUint16(p + 30, true);
-    const commentLen = cv.getUint16(p + 32, true);
-    const raw = cd.subarray(p + 46, p + 46 + nameLen);
-    let name;
-    if (flags & 0x0800) name = new TextDecoder().decode(raw);
-    else {
-      try { name = utf8.decode(raw); }
-      catch (err) {
-        needsRename = true; // Windows で作った日本語ファイル名（Shift_JIS）
-        name = sjis ? sjis.decode(raw) : String.fromCharCode.apply(null, raw);
-      }
-    }
-    if (flags & 0x0001) throw new Error(t("err.password"));
-    entries.push({ cdPos: p, localOffset: cv.getUint32(p + 42, true), method: cv.getUint16(p + 10, true),
-      compSize: cv.getUint32(p + 20, true), name, dir: name.endsWith("/") });
-    p += 46 + nameLen + extraLen + commentLen;
-  }
-  return { entries, needsRename, cd: { offset, size, eocdPos: file.size - tailLen + e } };
-}
-
-async function zipEntryBytes(file, e) {
-  const head = new DataView(await file.slice(e.localOffset, e.localOffset + 30).arrayBuffer());
-  const start = e.localOffset + 30 + head.getUint16(26, true) + head.getUint16(28, true);
-  let blob = file.slice(start, start + e.compSize);
-  if (e.method === 8) blob = await new Response(blob.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
-  else if (e.method !== 0) throw new Error("unsupported compression: " + e.name);
-  return new Uint8Array(await blob.arrayBuffer());
 }
 
 // ---------- 保存（store-worker.js） ----------
@@ -382,12 +322,12 @@ document.addEventListener("drop", async (e) => {
 // デモ（7-Zip 9.20、LGPL。demo/NOTICE.md）
 $("demo").addEventListener("click", async () => {
   const existing = loadMeta().find((g) => g.demo);
-  if (existing) return launch(existing);
+  if (existing) return start(existing);
   const blob = await (await fetch("demo/7-zip.zip")).blob();
   const id = await addItems([{ file: new File([blob], "7-Zip.zip", { type: "application/zip" }), path: "7-Zip.zip" }], "7-Zip (demo)");
   if (!id) return;
   updateMeta(id, { demo: true, exe: "7zFM.exe" });
-  launch(loadMeta().find((g) => g.id === id));
+  start(loadMeta().find((g) => g.id === id));
 });
 
 // ---------- ライブラリ表示 ----------
@@ -468,7 +408,7 @@ function renderCard(g) {
     row.appendChild(button("lib.playHtml5", "primary grow", () => { location.href = "play/" + encodeURIComponent(g.id) + "/index.html"; }));
   } else {
     let target = g.exe;
-    const play = button(/\.msi$/i.test(target) ? "lib.install" : "lib.play", "primary grow", () => launch(Object.assign({}, current(), { exe: target })));
+    const play = button(/\.msi$/i.test(target) ? "lib.install" : "lib.play", "primary grow", () => start(Object.assign({}, current(), { exe: target })));
     const current = () => loadMeta().find((x) => x.id === g.id) || g;
     card.appendChild(selectField("lib.target", g.exes.map((x) => [x, x]), g.exe, (v) => {
       target = v;
@@ -479,6 +419,7 @@ function renderCard(g) {
     const sum = document.createElement("summary");
     sum.textContent = t("lib.advanced");
     adv.appendChild(sum);
+    adv.appendChild(selectField("lib.cpu", [["auto", t("lib.cpuAuto")], ["32", t("lib.cpu32")], ["64", t("lib.cpu64")]], g.cpu || "auto", (v) => updateMeta(g.id, { cpu: v })));
     adv.appendChild(selectField("lib.engine", [["jit", t("lib.engineJit")], ["compat", t("lib.engineCompat")]], g.engine, (v) => updateMeta(g.id, { engine: v })));
     adv.appendChild(selectField("lib.resolution", [["", t("lib.auto")], ["640x480", "640x480"], ["800x600", "800x600"], ["1024x768", "1024x768"]], g.resolution, (v) => updateMeta(g.id, { resolution: v })));
     adv.appendChild(selectField("lib.bpp", [["32", "32bit"], ["16", "16bit"], ["8", t("lib.bpp8")]], g.bpp, (v) => updateMeta(g.id, { bpp: v })));
@@ -689,6 +630,35 @@ function saveControls(g) {
 }
 
 // ---------- 起動 ----------
+// 起動するファイルの CPU 種別（PE ヘッダー）を見て、32bit エンジン / 64bit エンジン / DOS を振り分ける
+async function targetArch(g) {
+  try {
+    const file = await gameFile(g.id);
+    const idx = await readZipIndex(file);
+    const e = idx.entries.find((x) => x.name === g.exe);
+    if (e && /\.com$/i.test(e.name)) return "dos";
+    return e && /\.exe$/i.test(e.name) ? await exeArch(file, e) : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function start(g, opts = {}) {
+  if (!opts.desktop) {
+    const want = g.cpu || "auto";
+    const arch = want === "auto" ? await targetArch(g) : want === "64" ? "x64" : "x86";
+    if (arch === "x64") {
+      location.href = "run64.html?id=" + encodeURIComponent(g.id) + "&exe=" + encodeURIComponent(g.exe);
+      return;
+    }
+    if (arch === "dos" && want === "auto") {
+      location.href = "dos.html?id=" + encodeURIComponent(g.id) + "&exe=" + encodeURIComponent(g.exe);
+      return;
+    }
+  }
+  launch(g, opts);
+}
+
 function launch(g, opts = {}) {
   const target = g.exe || "";
   const slash = target.lastIndexOf("/");

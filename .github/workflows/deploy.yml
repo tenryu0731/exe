@@ -18,6 +18,8 @@ env:
   # 上流 Boxedwine の固定コミット（更新する場合はここを書き換える）
   BOXEDWINE_COMMIT: 922848c4443012d0ed6b8acba581cc2ada6fe482
   EMSDK_VERSION: 6.0.10
+  # 64bit エンジン（Boxedwine64 + wine64）の取得元 WindowsAppPlayer の固定コミット
+  ENGINE64_COMMIT: 97c6294d84f7008fe8f96ab2ee686d7eab25b923
   # Wine 11 ファイルシステム（配布元で更新されることがあるため、ハッシュ固定ではなく内容を検査する）
   FS_URL: https://boxedwine.org/v2/11/TinyCore15Wine11.0.zip
 
@@ -97,6 +99,7 @@ jobs:
 
           mkdir -p _site/engine
           cp -r engine-out/jit engine-out/compat _site/engine/
+          scripts/fetch-engine64.sh "$ENGINE64_COMMIT" _site/engine/64
 
           # GitHub Pages の 1 ファイル上限を避けるため 45MB ごとに分割（Service Worker が結合する）
           mkdir -p _site/fs

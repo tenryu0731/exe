@@ -4,6 +4,16 @@
 //  - 同一オリジンの応答に COOP/COEP を付与し cross-origin isolation を有効化（AudioWorklet 用）
 
 const GAME_CACHE = "exe-games-v1";
+const ENGINE64_CACHE = "exe-engine64-v1";
+
+async function cacheFirst(request, name) {
+  const cache = await caches.open(name);
+  const hit = await cache.match(request.url);
+  if (hit) return hit;
+  const res = await fetch(request.url);
+  if (res.ok) await cache.put(request.url, res.clone());
+  return res;
+}
 const FS_CACHE_PREFIX = "exe-fs-";
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -207,6 +217,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (event.request.method !== "GET") return;
+  // 64bit エンジンの rootfs 分割ファイルと wasm は変わらないので、一度取得したら Cache Storage から返す
+  if (/^engine\/64\/.*(\.part\d+|\.wasm)$/.test(rel)) {
+    event.respondWith(cacheFirst(event.request, ENGINE64_CACHE).then(withIsolation));
+    return;
+  }
   event.respondWith(fetch(event.request).then(withIsolation));
 });
 

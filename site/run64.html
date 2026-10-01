@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>EXE Launcher — 64-bit</title>
+<style>
+  :root { --bg: #101418; --panel: #1c232b; --text: #f2f5f8; --muted: #b8c3cf; --border: #46525f; --err: #ff9a8f; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body { display: flex; flex-direction: column; font: 14px/1.4 system-ui, -apple-system, "Hiragino Sans", sans-serif; }
+  #bar { display: flex; gap: 8px; align-items: center; padding: 8px; padding-top: max(8px, env(safe-area-inset-top));
+    background: var(--panel); border-bottom: 1px solid var(--border); }
+  #bar a { color: var(--text); background: #2b3540; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; text-decoration: none; }
+  #status { flex: 1; color: var(--muted); min-width: 0; }
+  #status.err { color: var(--err); }
+  iframe { flex: 1; border: 0; width: 100%; background: #000; }
+</style>
+</head>
+<body>
+  <div id="bar"><a href="./" id="back"></a><span id="status"></span></div>
+  <iframe id="frame" title="wine64" allow="fullscreen; cross-origin-isolated"></iframe>
+<script src="i18n.js"></script>
+<script src="zip.js"></script>
+<script src="run64.js"></script>
+</body>
+</html>

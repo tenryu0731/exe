@@ -2,6 +2,8 @@
   {
     "date": "2026-10-01 (2)",
     "items": [
+      "64bit の exe に対応（wine64・試験的。PC の Chrome / Edge / Firefox 向け。exe のヘッダーで自動判別）",
+      "DOS の exe / com に対応（DOSBox。スマホ用の仮想キー付き）",
       "英語表示に対応（右上で切り替え）",
       "PC でのドラッグ＆ドロップ、フォルダごとの追加、複数ファイルの追加に対応",
       "デモ（7-Zip）をワンタップで試せるように",
@@ -9,6 +11,8 @@
       "Wine 本体から実行に不要なファイルを除き、初回ダウンロードを軽量化"
     ],
     "items_en": [
+      "64-bit .exe support (wine64, experimental, for desktop Chrome / Edge / Firefox; detected from the exe header)",
+      "DOS .exe / .com support (DOSBox, with an on-screen keypad for phones)",
       "English UI (switch at top right)",
       "Drag and drop on computers, adding whole folders and multiple files",
       "One-tap demo (7-Zip)",
