@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-10-01 (3)",
+    "items": [
+      "Wine 本体の削減をやめ、完全版の配信に戻した",
+      "Wine 本体のダウンロードが途中で切れても、続きから自動で取り直すように"
+    ],
+    "items_en": [
+      "Reverted the Wine filesystem pruning; the full filesystem is served again",
+      "Wine download now resumes automatically if the connection drops"
+    ]
+  },
+  {
     "date": "2026-10-01 (2)",
     "items": [
       "64bit の exe に対応（wine64・試験的。PC の Chrome / Edge / Firefox 向け。exe のヘッダーで自動判別）",

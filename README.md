@@ -28,7 +28,7 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 | `site/store-worker.js` | ゲームファイルを少しずつ OPFS へ書き込む Worker（大きなZIP対応・日本語ファイル名の変換）|
 | `site/mobile.js`, `mobile.css` | エミュレーター画面に注入するスマホ用UI（仮想キー等） |
 | `scripts/patch-shell.py` | Boxedwine の Web シェルに上記UIを差し込み、ZIP をメモリ上で複製しないよう改変。ZIP内の時刻をUTCで解釈 |
-| `scripts/prepare-filesystem.py` | Wine 本体から実行に不要なファイルを除き（上流 Boxedwine の Web 版と同じ規則、`web_runtime_policy.json`）、`.update-timestamp` を上記に合わせる |
+| `scripts/prepare-filesystem.py` | Wine 本体の `.update-timestamp` を上記に合わせる（`--prune` で上流 Web 版と同じ規則のファイル削減も可能、既定では行わない） |
 | `site/run64.html`, `run64.js` | 64bit の exe を wine64（Boxedwine64、`scripts/fetch-engine64.sh` で WindowsAppPlayer から取得）で動かす |
 | `site/dos.html` | DOS の exe / com を DOSBox（js-dos の emulators、`site/vendor/js-dos/`）で動かす |
 | `.github/workflows/deploy.yml` | Boxedwine（JIT版・互換版）のビルドと Pages への配備 |

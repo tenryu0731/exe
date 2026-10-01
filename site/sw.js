@@ -41,36 +41,63 @@ async function serveGame(request) {
   return new Response("game not found", { status: 404 });
 }
 
-// 分割ファイルを順に取得して 1 本のストリームとして流す（受け取り側で進み具合を表示できる）
+// 分割ファイルを順に取得して 1 本のストリームとして流す（受け取り側で進み具合を表示できる）。
+// 通信が途中で切れたら、その分割ファイルの受け取り済みの位置から Range 指定で取り直す（最大 3 回）
 function partsStream(manifest) {
   let index = 0;
   let reader = null;
+  let partName = null;
+  let partGot = 0;
+  let retries = 0;
+  let resume = false;
   let total = 0;
+
+  async function openPart(from) {
+    const headers = from > 0 ? { Range: "bytes=" + from + "-" } : {};
+    const res = await fetch(new URL("fs/" + partName, self.registration.scope).href, { headers, cache: "no-store" });
+    if (from > 0 && res.status !== 206) throw new Error("part " + partName + " range " + res.status);
+    if (!res.ok) throw new Error("part " + partName + " " + res.status);
+    reader = res.body.getReader();
+  }
+
   return new ReadableStream({
     async pull(controller) {
       for (;;) {
-        if (!reader) {
-          if (index >= manifest.parts.length) {
-            if (total !== manifest.size) controller.error(new Error("size mismatch " + total));
-            else controller.close();
+        try {
+          if (resume) {
+            await openPart(partGot);
+            resume = false;
+          }
+          if (!reader) {
+            if (index >= manifest.parts.length) {
+              if (total !== manifest.size) controller.error(new Error("size mismatch " + total));
+              else controller.close();
+              return;
+            }
+            partName = manifest.parts[index++];
+            partGot = 0;
+            retries = 0;
+            await openPart(0);
+          }
+          const { done, value } = await reader.read();
+          if (done) {
+            reader = null;
+            continue;
+          }
+          partGot += value.byteLength;
+          total += value.byteLength;
+          controller.enqueue(value);
+          return;
+        } catch (e) {
+          if (!partName || retries >= 3) {
+            controller.error(e);
             return;
           }
-          const part = manifest.parts[index++];
-          const res = await fetch(new URL("fs/" + part, self.registration.scope).href);
-          if (!res.ok) {
-            controller.error(new Error("part " + part + " " + res.status));
-            return;
-          }
-          reader = res.body.getReader();
-        }
-        const { done, value } = await reader.read();
-        if (done) {
+          retries++;
           reader = null;
-          continue;
+          resume = true;
+          await new Promise((r) => setTimeout(r, 1000 * retries));
         }
-        total += value.byteLength;
-        controller.enqueue(value);
-        return;
       }
     },
     cancel() {

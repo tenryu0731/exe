@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """配布元の Wine ファイルシステムZIPを、ブラウザ配信用に加工する。
 
-1. 実行に不要なファイルを除く（上流 Boxedwine の Web 版と同じ規則）
+1. --prune 指定時のみ、実行に不要なファイルを除く（上流 Boxedwine の Web 版と同じ規則）。
+   既定では除かない（完全版のまま配信する）
    - web_runtime_policy.json の remove_files（上流 tools/buildWine/ で監査済みの一覧。
      Boxedwine commit 922848c の同名ファイルを複製）
    - Wine の開発用ファイル（opt/wine/include/、opt/wine/lib/**/*.a）、SDK ツール
@@ -14,7 +15,7 @@
 
 残すエントリは圧縮済みデータをそのままコピーする。
 
-usage: prepare-filesystem.py <in.zip> <out.zip>
+usage: prepare-filesystem.py [--prune] <in.zip> <out.zip>
 """
 import calendar
 import json
@@ -57,7 +58,7 @@ def excluded(name):
     return name.startswith("opt/wine/bin/") and base in SDK_TOOLS
 
 
-def main(src, dst):
+def main(src, dst, prune=False):
     zin = zipfile.ZipFile(src)
     names = set(zin.namelist())
     missing = REQUIRED - names
@@ -91,7 +92,7 @@ def main(src, dst):
 
     ends = sorted(r["local"] for r in records) + [cd_offset]
     next_offset = {start: ends[i + 1] for i, start in enumerate(ends[:-1])}
-    kept = [r for r in records if not excluded(r["name"].decode("utf-8", "replace"))]
+    kept = [r for r in records if not (prune and excluded(r["name"].decode("utf-8", "replace")))]
     removed = len(records) - len(kept)
 
     with open(dst, "wb") as out:
@@ -132,4 +133,5 @@ def main(src, dst):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    args = [a for a in sys.argv[1:] if a != "--prune"]
+    main(args[0], args[1], prune="--prune" in sys.argv[1:])

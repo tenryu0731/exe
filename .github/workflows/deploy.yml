@@ -86,7 +86,7 @@ jobs:
       - name: Prepare Wine filesystem
         run: |
           set -euo pipefail
-          # 実行に不要なファイルを除き（上流の Web 版と同じ規則）、.update-timestamp を UTC 解釈に合わせる
+          # .update-timestamp を UTC 解釈に合わせる（ファイルの削減は行わず完全版を配信。削減する場合は --prune）
           python3 scripts/prepare-filesystem.py fs-download/boxedwine.zip fs-download/fixed.zip
           mv fs-download/fixed.zip fs-download/boxedwine.zip
           echo "FS_SHA256=$(sha256sum fs-download/boxedwine.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
@@ -115,7 +115,7 @@ jobs:
           EOF
           cat > _site/engine/BOXEDWINE_VERSION.txt <<EOF
           Boxedwine commit: $BOXEDWINE_COMMIT (https://github.com/danoon2/Boxedwine, GPL-2.0)
-          Filesystem: $FS_URL (pruned for web, .update-timestamp patched) sha256=$FS_SHA256
+          Filesystem: $FS_URL (.update-timestamp patched) sha256=$FS_SHA256
           EOF
           printf '{"build": %s, "sha": "%s", "date": "%s"}\n' \
             "$GITHUB_RUN_NUMBER" "${GITHUB_SHA:0:7}" "$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST')" > _site/version.json
