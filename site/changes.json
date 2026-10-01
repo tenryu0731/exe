@@ -2,10 +2,12 @@
   {
     "date": "2026-10-01 (3)",
     "items": [
+      "ランチャーのデザインを一新",
       "Wine 本体の削減をやめ、完全版の配信に戻した",
       "Wine 本体のダウンロードが途中で切れても、続きから自動で取り直すように"
     ],
     "items_en": [
+      "Redesigned the launcher",
       "Reverted the Wine filesystem pruning; the full filesystem is served again",
       "Wine download now resumes automatically if the connection drops"
     ]

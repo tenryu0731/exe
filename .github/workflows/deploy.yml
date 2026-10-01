@@ -136,3 +136,29 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # 公開物を実際のブラウザ（WebKit / Chromium）で動かして確認する。公開（deploy）は待たない。
+  e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: artifact
+      - name: Serve site
+        run: |
+          mkdir -p srv/exe
+          tar -xf artifact/artifact.tar -C srv/exe
+          (cd srv && python3 -m http.server 8765 >/dev/null 2>&1 &)
+          sleep 2
+          curl -fsS -o /dev/null http://localhost:8765/exe/
+      - name: Install Playwright
+        run: |
+          npm init -y >/dev/null
+          npm install playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium webkit
+      - name: Run E2E
+        run: node scripts/e2e.mjs http://localhost:8765/exe/
