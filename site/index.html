@@ -126,7 +126,6 @@
     </ul>
   </details>
 
-<script src="jszip.min.js"></script>
 <script>
 "use strict";
 const GAME_CACHE = "exe-games-v1";
@@ -200,6 +199,7 @@ navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", (
 });
 
 // ---------- ZIP 処理 ----------
+// ZIP 全体は読み込まず、末尾のセントラルディレクトリだけを読んで中身の一覧を得る。
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 let sjis = null;
 try { sjis = new TextDecoder("shift_jis"); } catch (e) {}
@@ -216,23 +216,86 @@ function exeScore(path) {
   return s;
 }
 
-async function readAsZip(file) {
-  let needsRepack = false;
-  if (/\.exe$/i.test(file.name)) {
-    const zip = new JSZip();
-    zip.file(file.name, file);
-    return { zip, needsRepack: true };
+async function sliceBytes(file, start, end) {
+  return new Uint8Array(await file.slice(start, end).arrayBuffer());
+}
+
+async function readZipIndex(file) {
+  const tailLen = Math.min(file.size, 65536 + 22);
+  const tail = await sliceBytes(file, file.size - tailLen, file.size);
+  const tv = new DataView(tail.buffer);
+  let e = -1;
+  for (let i = tail.length - 22; i >= 0; i--) {
+    if (tv.getUint32(i, true) === 0x06054b50) { e = i; break; }
   }
-  const zip = await JSZip.loadAsync(file, {
-    decodeFileName: (bytes) => {
-      try { return utf8.decode(bytes); }
-      catch (e) {
-        needsRepack = true; // Windows で作った日本語ファイル名（Shift_JIS）
-        return sjis ? sjis.decode(bytes) : String.fromCharCode.apply(null, bytes);
+  if (e < 0) throw new Error("ZIP ファイルとして読めません");
+  const count = tv.getUint16(e + 10, true);
+  const size = tv.getUint32(e + 12, true);
+  const offset = tv.getUint32(e + 16, true);
+  if (count === 0xffff || size === 0xffffffff || offset === 0xffffffff) {
+    throw new Error("4GB を超える ZIP（ZIP64）には未対応です");
+  }
+  const cd = await sliceBytes(file, offset, offset + size);
+  const cv = new DataView(cd.buffer);
+  const entries = [];
+  let needsRename = false;
+  let p = 0;
+  while (p + 46 <= cd.length) {
+    if (cv.getUint32(p, true) !== 0x02014b50) throw new Error("ZIP の目次が壊れています");
+    const flags = cv.getUint16(p + 8, true);
+    const nameLen = cv.getUint16(p + 28, true);
+    const extraLen = cv.getUint16(p + 30, true);
+    const commentLen = cv.getUint16(p + 32, true);
+    const localOffset = cv.getUint32(p + 42, true);
+    const raw = cd.subarray(p + 46, p + 46 + nameLen);
+    let name;
+    if (flags & 0x0800) {
+      name = new TextDecoder().decode(raw);
+    } else {
+      try { name = utf8.decode(raw); }
+      catch (err) {
+        needsRename = true; // Windows で作った日本語ファイル名（Shift_JIS）
+        name = sjis ? sjis.decode(raw) : String.fromCharCode.apply(null, raw);
       }
-    },
+    }
+    if (flags & 0x0001) throw new Error("パスワード付き ZIP には未対応です");
+    entries.push({ cdPos: p, localOffset, name, dir: name.endsWith("/") });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return { entries, needsRename, cd: { offset, size, eocdPos: file.size - tailLen + e } };
+}
+
+function runWorker(msg, onProgress) {
+  return new Promise((resolve, reject) => {
+    const w = new Worker("store-worker.js");
+    w.onmessage = (e) => {
+      const d = e.data;
+      if (d.type === "progress") onProgress(d.done, d.total);
+      else if (d.type === "done") { w.terminate(); resolve(d.size); }
+      else if (d.type === "error") { w.terminate(); reject(new Error(d.message)); }
+    };
+    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || "worker error")); };
+    w.postMessage(msg);
   });
-  return { zip, needsRepack };
+}
+
+async function storageNote() {
+  try {
+    const est = await navigator.storage.estimate();
+    return "（空き容量の目安: " + ((est.quota - est.usage) / 1048576).toFixed(0) + " MB）";
+  } catch (e) { return ""; }
+}
+
+async function removeGameFile(id) {
+  try {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle("games");
+    await dir.removeEntry(id + ".zip");
+  } catch (e) {}
+  try {
+    const cache = await caches.open(GAME_CACHE);
+    await cache.delete(new URL("games/" + id + ".zip", location.href).href);
+  } catch (e) {}
 }
 
 function safeId(name) {
@@ -246,34 +309,51 @@ $("picker").addEventListener("change", async (e) => {
   e.target.value = "";
   if (!file) return;
   const st = $("add-status");
+  const pick = $("pick");
   st.className = "status";
   st.textContent = "読み込み中… " + file.name;
+  pick.disabled = true;
+  const id = safeId(file.name);
   try {
-    const { zip, needsRepack } = await readAsZip(file);
-    const exes = Object.values(zip.files).filter((f) => !f.dir && isExe(f.name)).map((f) => f.name);
-    if (!exes.length) throw new Error("ZIP の中に .exe が見つかりません");
+    if (!navigator.storage || !navigator.storage.getDirectory) {
+      throw new Error("このブラウザはファイル保存（OPFS）に未対応です。iOS / Safari を更新してください");
+    }
+    let exes, msg;
+    if (/\.exe$/i.test(file.name)) {
+      exes = [file.name];
+      msg = { op: "wrapExe", file, id, name: file.name };
+    } else {
+      const index = await readZipIndex(file);
+      exes = index.entries.filter((x) => !x.dir && isExe(x.name)).map((x) => x.name);
+      if (!exes.length) throw new Error("ZIP の中に .exe が見つかりません");
+      if (index.needsRename) {
+        const enc = new TextEncoder();
+        msg = { op: "rewrite", file, id, cd: index.cd,
+          entries: index.entries.map((x) => ({ cdPos: x.cdPos, localOffset: x.localOffset, utf8Name: enc.encode(x.name) })) };
+      } else {
+        msg = { op: "copy", file, id };
+      }
+    }
     exes.sort((a, b) => exeScore(a) - exeScore(b) || a.localeCompare(b));
 
-    let blob = file;
-    if (needsRepack) {
-      st.textContent = "ファイル名を変換して再圧縮中…";
-      blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 1 } });
-    }
-    const id = safeId(file.name);
-    const cache = await caches.open(GAME_CACHE);
-    await cache.put(new URL("games/" + id + ".zip", location.href).href,
-      new Response(blob, { headers: { "Content-Type": "application/zip" } }));
+    const label = msg.op === "rewrite" ? "ファイル名を変換しながら保存中… " : "保存中… ";
+    const size = await runWorker(msg, (done, total) => {
+      st.textContent = label + Math.floor((done / total) * 100) + "%（" + (done / 1048576).toFixed(0) + " / " + (total / 1048576).toFixed(0) + " MB）";
+    });
 
     const list = loadMeta();
     list.unshift({ id, title: file.name.replace(/\.(zip|exe)$/i, ""), exes, exe: exes[0],
-      engine: "jit", resolution: "", bpp: "32", sound: true, japanese: true, size: blob.size, added: Date.now() });
+      engine: "jit", resolution: "", bpp: "32", sound: true, japanese: true, size, added: Date.now() });
     saveMeta(list);
     st.className = "status ok";
     st.textContent = "追加しました: " + file.name;
     renderLibrary();
   } catch (err) {
+    await removeGameFile(id);
     st.className = "status err";
-    st.textContent = "追加できませんでした: " + err.message;
+    st.textContent = "追加できませんでした: " + err.message + " " + (await storageNote());
+  } finally {
+    pick.disabled = false;
   }
 });
 
@@ -338,8 +418,7 @@ function renderLibrary() {
     del.className = "danger"; del.textContent = "削除";
     del.addEventListener("click", async () => {
       if (!confirm("「" + g.title + "」を削除しますか？（セーブデータは残ります）")) return;
-      const cache = await caches.open(GAME_CACHE);
-      await cache.delete(new URL("games/" + g.id + ".zip", location.href).href);
+      await removeGameFile(g.id);
       saveMeta(loadMeta().filter((x) => x.id !== g.id));
       renderLibrary();
     });

@@ -44,7 +44,7 @@ jobs:
       - name: Patch Boxedwine for mobile
         working-directory: boxedwine/project/emscripten
         run: |
-          python3 "$GITHUB_WORKSPACE/scripts/patch-shell.py" shell.html
+          python3 "$GITHUB_WORKSPACE/scripts/patch-shell.py" .
           # 新しい emscripten では emcc でのリンク時に libc++ が入らないため em++ でリンクする
           sed -i 's/^\t@\$(CC) \$(ALL) -o \$@ \$(LDFLAGS)$/\t@$(CXX) $(ALL) -o $@ $(LDFLAGS)/' makefile
           grep -q '@$(CXX) $(ALL) -o' makefile

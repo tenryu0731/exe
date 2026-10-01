@@ -3,6 +3,24 @@
 (function () {
   "use strict";
 
+  // ランチャーが OPFS に保存したゲームZIPを、Boxedwine の fetch("…/games/<id>.zip") に渡す
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async function (input, init) {
+    const url = new URL(typeof input === "string" ? input : input.url, location.href);
+    const m = url.pathname.match(/\/games\/([^/]+\.zip)$/);
+    if (m && navigator.storage && navigator.storage.getDirectory) {
+      try {
+        const root = await navigator.storage.getDirectory();
+        const dir = await root.getDirectoryHandle("games");
+        const file = await (await dir.getFileHandle(decodeURIComponent(m[1]))).getFile();
+        return new Response(file, { headers: { "Content-Type": "application/zip" } });
+      } catch (e) {
+        // 見つからなければ従来どおり（Service Worker の Cache）から読む
+      }
+    }
+    return originalFetch(input, init);
+  };
+
   // [表示名, KeyboardEvent.key, KeyboardEvent.code, keyCode, ラッチ式(修飾キー)]
   const KEYS = [
     ["Esc", "Escape", "Escape", 27],

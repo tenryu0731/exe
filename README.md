@@ -23,10 +23,11 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 
 | パス | 内容 |
 | --- | --- |
-| `site/index.html` | ランチャー（ゲーム追加・一覧・起動設定） |
+| `site/index.html` | ランチャー（ゲーム追加・一覧・起動設定）。ゲームは OPFS（ブラウザ内ファイル領域）に保存 |
 | `site/sw.js` | Service Worker。ゲームZIPの配信、分割した Wine ファイルシステムの結合とキャッシュ、COOP/COEP 付与 |
+| `site/store-worker.js` | ゲームファイルを少しずつ OPFS へ書き込む Worker（大きなZIP対応・日本語ファイル名の変換）|
 | `site/mobile.js`, `mobile.css` | エミュレーター画面に注入するスマホ用UI（仮想キー等） |
-| `scripts/patch-shell.py` | Boxedwine の `shell.html` に上記UIを差し込む |
+| `scripts/patch-shell.py` | Boxedwine の Web シェルに上記UIを差し込み、ZIP をメモリ上で複製しないよう改変 |
 | `.github/workflows/deploy.yml` | Boxedwine（JIT版・互換版）のビルドと Pages への配備 |
 
 ## 制限
