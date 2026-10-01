@@ -1,0 +1,52 @@
+name: Inspect Wine filesystem
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and inspect
+        run: |
+          set -euo pipefail
+          curl -fSL --retry 5 -o fs.zip https://boxedwine.org/v2/11/TinyCore15Wine11.0.zip
+          python3 - <<'EOF'
+          import zipfile, collections, datetime
+          z = zipfile.ZipFile("fs.zip")
+          infos = z.infolist()
+          print("entries", len(infos), "uncompressed MB", sum(i.file_size for i in infos) // 2**20)
+          top = collections.Counter()
+          for i in infos:
+              parts = i.filename.split("/")
+              top["/".join(parts[:3])] += i.file_size
+          for k, v in top.most_common(25):
+              print(f"{v // 2**20:6d} MB  {k}")
+          def show(name):
+              for i in infos:
+                  if i.filename == name:
+                      print(name, i.date_time, i.file_size)
+                      if i.file_size < 400:
+                          print("   content:", z.read(i)[:200])
+                      return
+              print(name, "MISSING")
+          for n in [
+              "home/username/.wine/.update-timestamp",
+              "home/username/.wine/system.reg",
+              "home/username/.wine/user.reg",
+              "home/username/.wine/userdef.reg",
+              "opt/wine/share/wine/wine.inf",
+              "opt/wine/bin/wine",
+          ]:
+              show(n)
+          print("--- entries mentioning wine.inf / update-timestamp")
+          for i in infos:
+              if "wine.inf" in i.filename or "update-timestamp" in i.filename:
+                  print(i.filename, i.date_time, i.file_size)
+          print("--- newest 10 entries")
+          for i in sorted(infos, key=lambda i: i.date_time)[-10:]:
+              print(i.date_time, i.filename)
+          EOF
