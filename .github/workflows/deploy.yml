@@ -18,9 +18,8 @@ env:
   # 上流 Boxedwine の固定コミット（更新する場合はここを書き換える）
   BOXEDWINE_COMMIT: 922848c4443012d0ed6b8acba581cc2ada6fe482
   EMSDK_VERSION: 6.0.10
-  # Wine 11 ファイルシステム（上流 tools/buildWine/webgl_filesystems_v11.json の full-v11 プロファイル）
+  # Wine 11 ファイルシステム（配布元で更新されることがあるため、ハッシュ固定ではなく内容を検査する）
   FS_URL: https://boxedwine.org/v2/11/TinyCore15Wine11.0.zip
-  FS_SHA256: 13993bf74c3421304ee50e247ff628ca47d75ae3118e10967a388e8a664aabee
 
 jobs:
   build:
@@ -56,23 +55,35 @@ jobs:
           make jit
           make release
 
-      - name: Cache Wine filesystem
-        id: fscache
-        uses: actions/cache@v4
-        with:
-          path: fs-download
-          key: fs-${{ env.FS_SHA256 }}
-
       - name: Download Wine filesystem
-        if: steps.fscache.outputs.cache-hit != 'true'
         run: |
+          set -euo pipefail
           mkdir -p fs-download
           curl -fSL --retry 5 -o fs-download/boxedwine.zip "$FS_URL"
+          python3 - <<'EOF'
+          import hashlib, os, sys, zipfile
+          path = "fs-download/boxedwine.zip"
+          size = os.path.getsize(path)
+          sha = hashlib.sha256(open(path, "rb").read()).hexdigest()
+          print(f"size={size} sha256={sha}")
+          if size < 50_000_000:
+              sys.exit("filesystem too small")
+          with zipfile.ZipFile(path) as z:
+              names = z.namelist()
+              bad = z.testzip()
+              if bad:
+                  sys.exit(f"corrupt entry: {bad}")
+          for needed in ("opt/wine/", "home/username/.wine/"):
+              if not any(n.startswith(needed) for n in names):
+                  sys.exit(f"missing {needed}")
+          print(f"entries={len(names)} ok")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"FS_SHA256={sha}\n")
+          EOF
 
       - name: Assemble site
         run: |
           set -euo pipefail
-          echo "$FS_SHA256  fs-download/boxedwine.zip" | sha256sum -c -
           rm -rf _site
           cp -r site _site
 
