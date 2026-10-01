@@ -140,13 +140,7 @@ function injectIntoIndex(html, id) {
     "s.getItem=function(k){return g.call(this,p+k)};" +
     "s.setItem=function(k,v){return t.call(this,p+k,v)};" +
     "s.removeItem=function(k){return r.call(this,p+k)};" +
-    "document.addEventListener('DOMContentLoaded',function(){var a=document.createElement('a');" +
-    "a.textContent='×';a.href='../../';a.setAttribute('aria-label','ランチャーに戻る');" +
-    "a.style.cssText='position:fixed;top:max(4px,env(safe-area-inset-top));right:6px;z-index:2147483647;" +
-    "width:32px;height:32px;line-height:30px;text-align:center;border-radius:16px;background:rgba(0,0,0,.55);" +
-    "color:#fff;font:20px/30px sans-serif;text-decoration:none';" +
-    "a.addEventListener('click',function(e){if(!confirm('ランチャーに戻りますか？（セーブしていない進行は失われます）'))e.preventDefault()});" +
-    "document.body.appendChild(a)});})();</script>";
+    "})();</script><script src=\"../../play-pad.js\"></script>";
   return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + tag) : tag + html;
 }
 
