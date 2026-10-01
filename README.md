@@ -33,7 +33,8 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 
 ## 制限
 
-- 主な対象は軽い 2D の古いゲーム。Direct3D 10 以降は非対応（Boxedwine 26R2 の changeLog より）
+- RPGツクールMV/MZ は Wine を使わず、ゲーム本体（HTML5）をブラウザで直接動かす
+- それ以外の主な対象は軽い 2D の古いゲーム。Direct3D 10 以降は非対応（Boxedwine 26R2 の changeLog より）
 - iPhone のメモリ・CPU 次第で、起動しない／非常に遅いことがある
 - 日本語フォントが Wine のファイルシステムに含まれていない場合、日本語が文字化け（□）する可能性あり（未検証）
 

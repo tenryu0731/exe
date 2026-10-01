@@ -139,6 +139,7 @@
 <script>
 "use strict";
 const GAME_CACHE = "exe-games-v1";
+const HTML5_CACHE = "exe-html5-v1";
 const APP_DIR = "/home/username/.wine/dosdevices/c:/files";
 const META_KEY = "exe-launcher-games-v1";
 const $ = (id) => document.getElementById(id);
@@ -265,6 +266,8 @@ async function readZipIndex(file) {
     const extraLen = cv.getUint16(p + 30, true);
     const commentLen = cv.getUint16(p + 32, true);
     const localOffset = cv.getUint32(p + 42, true);
+    const method = cv.getUint16(p + 10, true);
+    const compSize = cv.getUint32(p + 20, true);
     const raw = cd.subarray(p + 46, p + 46 + nameLen);
     let name;
     if (flags & 0x0800) {
@@ -277,7 +280,7 @@ async function readZipIndex(file) {
       }
     }
     if (flags & 0x0001) throw new Error("パスワード付き ZIP には未対応です");
-    entries.push({ cdPos: p, localOffset, name, dir: name.endsWith("/") });
+    entries.push({ cdPos: p, localOffset, method, compSize, name, dir: name.endsWith("/") });
     p += 46 + nameLen + extraLen + commentLen;
   }
   return { entries, needsRename, cd: { offset, size, eocdPos: file.size - tailLen + e } };
@@ -302,6 +305,22 @@ async function storageNote() {
     const est = await navigator.storage.estimate();
     return "（空き容量の目安: " + ((est.quota - est.usage) / 1048576).toFixed(0) + " MB）";
   } catch (e) { return ""; }
+}
+
+async function removeHtml5(id) {
+  try {
+    const cache = await caches.open(HTML5_CACHE);
+    const prefix = new URL("play/" + encodeURIComponent(id) + "/", location.href).href;
+    for (const req of await cache.keys()) {
+      if (req.url.startsWith(prefix)) await cache.delete(req);
+    }
+  } catch (e) {}
+}
+
+// RPGツクールMV/MZ をブラウザで直接遊べる形式（Cache Storage）に展開する
+function html5Message(file, id, index, root) {
+  return { op: "extract", file, id, root, base: new URL("./", location.href).href,
+    entries: index.entries.map((x) => ({ name: x.name, dir: x.dir, localOffset: x.localOffset, method: x.method, compSize: x.compSize })) };
 }
 
 async function removeGameFile(id) {
@@ -344,8 +363,12 @@ $("picker").addEventListener("change", async (e) => {
       const index = await readZipIndex(file);
       allNames = index.entries.map((x) => x.name);
       exes = index.entries.filter((x) => !x.dir && isExe(x.name)).map((x) => x.name);
-      if (!exes.length) throw new Error("ZIP の中に .exe が見つかりません");
-      if (index.needsRename) {
+      const k = kindOf(allNames);
+      if (k.html5Root !== undefined) {
+        msg = html5Message(file, id, index, k.html5Root);
+      } else if (!exes.length) {
+        throw new Error("ZIP の中に .exe が見つかりません");
+      } else if (index.needsRename) {
         const enc = new TextEncoder();
         msg = { op: "rewrite", file, id, cd: index.cd,
           entries: index.entries.map((x) => ({ cdPos: x.cdPos, localOffset: x.localOffset, utf8Name: enc.encode(x.name) })) };
@@ -355,14 +378,15 @@ $("picker").addEventListener("change", async (e) => {
     }
     exes.sort((a, b) => exeScore(a) - exeScore(b) || a.localeCompare(b));
 
-    const label = msg.op === "rewrite" ? "ファイル名を変換しながら保存中… " : "保存中… ";
+    const label = msg.op === "extract" ? "ブラウザ用に展開中… " : msg.op === "rewrite" ? "ファイル名を変換しながら保存中… " : "保存中… ";
     const size = await runWorker(msg, (done, total) => {
       st.textContent = label + Math.floor((done / total) * 100) + "%（" + (done / 1048576).toFixed(0) + " / " + (total / 1048576).toFixed(0) + " MB）";
     });
 
     const list = loadMeta();
-    const kind = msg.op === "wrapExe" ? { name: "単体EXE", verdict: "ok", note: "" } : detectGameKind(allNames);
+    const kind = msg.op === "wrapExe" ? { v: KIND_VERSION, name: "単体EXE", verdict: "ok", note: "" } : kindOf(allNames);
     list.unshift({ id, title: file.name.replace(/\.(zip|exe)$/i, ""), exes, exe: exes[0], kind,
+      mode: msg.op === "extract" ? "html5" : "wine",
       engine: "jit", resolution: "", bpp: "32", sound: true, japanese: true, size, added: Date.now() });
     saveMeta(list);
     st.className = "status ok";
@@ -370,6 +394,7 @@ $("picker").addEventListener("change", async (e) => {
     renderLibrary();
   } catch (err) {
     await removeGameFile(id);
+    await removeHtml5(id);
     st.className = "status err";
     st.textContent = "追加できませんでした: " + err.message + " " + (await storageNote());
   } finally {
@@ -379,13 +404,25 @@ $("picker").addEventListener("change", async (e) => {
 
 // ---------- ゲームエンジンの判別 ----------
 // verdict: ok=動く見込みあり / hard=重い・不安定 / no=この方式ではほぼ動かない
+const KIND_VERSION = 2;
 function detectGameKind(names) {
   const lower = names.map((n) => n.toLowerCase());
   const has = (re) => lower.some((n) => re.test(n));
-  if (has(/(^|\/)js\/rmmz_core\.js$/)) return { name: "RPGツクールMZ", verdict: "no",
-    note: "中身は HTML5（NW.js）製。Wine 経由では動きませんが、ブラウザで直接動かせる可能性があります" };
-  if (has(/(^|\/)js\/rpg_core\.js$/)) return { name: "RPGツクールMV", verdict: "no",
-    note: "中身は HTML5（NW.js）製。Wine 経由では動きませんが、ブラウザで直接動かせる可能性があります" };
+  // index.html と js/rmmz_core.js（MZ）/ js/rpg_core.js（MV）が並ぶフォルダがゲーム本体
+  const html5 = (core, name) => {
+    for (let i = 0; i < lower.length; i++) {
+      const m = lower[i].match(new RegExp("^(.*?)js\\/" + core + "\\.js$"));
+      if (m && lower.includes(m[1] + "index.html")) {
+        return { v: KIND_VERSION, name, verdict: "ok", html5Root: names[i].slice(0, m[1].length),
+          note: "Wine を使わずブラウザで直接遊べます" };
+      }
+    }
+    return null;
+  };
+  const mz = html5("rmmz_core", "RPGツクールMZ");
+  if (mz) return mz;
+  const mv = html5("rpg_core", "RPGツクールMV");
+  if (mv) return mv;
   if (has(/(^|\/)unityplayer\.dll$/) || has(/_data\/(globalgamemanagers|data\.unity3d|resources\.assets)$/)) return { name: "Unity", verdict: "no",
     note: "多くが Direct3D 11 以降を使うため、この方式ではほぼ動きません" };
   if (has(/(^|\/)engine\/binaries\//)) return { name: "Unreal Engine", verdict: "no", note: "重すぎるため動きません" };
@@ -400,6 +437,10 @@ function detectGameKind(names) {
   if (has(/(^|\/)tyrano\//)) return { name: "ティラノスクリプト（HTML5）", verdict: "no", note: "Chromium ベースのため Wine 経由では動きません" };
   if (has(/\.xp3$/)) return { name: "吉里吉里", verdict: "ok", note: "動く見込みがあります" };
   return { name: "不明", verdict: "ok", note: "" };
+}
+
+function kindOf(names) {
+  return Object.assign({ v: KIND_VERSION }, detectGameKind(names));
 }
 
 async function gameFile(id) {
@@ -452,39 +493,83 @@ function renderLibrary() {
       kindEl.className = "kind kind-" + k.verdict;
       kindEl.textContent = "種類: " + k.name + (k.note ? " — " + k.note : "");
     };
-    if (g.kind) showKind(g.kind);
+    if (g.kind && g.kind.v === KIND_VERSION) showKind(g.kind);
     else {
       kindEl.className = "kind";
       kindEl.textContent = "種類: 判別中…";
       gameFile(g.id).then(readZipIndex).then((idx) => {
-        const k = detectGameKind(idx.entries.map((x) => x.name));
+        const k = kindOf(idx.entries.map((x) => x.name));
         update(g.id, { kind: k });
         showKind(k);
       }).catch(() => { kindEl.textContent = "種類: 判別できませんでした"; });
     }
     card.append(title, meta, kindEl);
+    const html5 = g.mode === "html5";
 
-    card.appendChild(selectField("起動する EXE", g.exes.map((x) => [x, x]), g.exe, (v) => update(g.id, { exe: v })));
-    const adv = document.createElement("details");
-    const sum = document.createElement("summary"); sum.textContent = "詳細設定";
-    adv.appendChild(sum);
-    adv.appendChild(selectField("エンジン", [["jit", "高速（JIT）"], ["compat", "互換（遅いが安定）"]], g.engine, (v) => update(g.id, { engine: v })));
-    adv.appendChild(selectField("画面解像度", [["", "自動"], ["640x480", "640x480"], ["800x600", "800x600"], ["1024x768", "1024x768"]], g.resolution, (v) => update(g.id, { resolution: v })));
-    adv.appendChild(selectField("色数", [["32", "32bit"], ["16", "16bit"], ["8", "8bit（256色）"]], g.bpp, (v) => update(g.id, { bpp: v })));
-    adv.appendChild(selectField("サウンド", [["1", "オン"], ["0", "オフ"]], g.sound ? "1" : "0", (v) => update(g.id, { sound: v === "1" })));
-    adv.appendChild(selectField("ロケール", [["1", "日本語 (ja_JP)"], ["0", "英語（既定）"]], g.japanese ? "1" : "0", (v) => update(g.id, { japanese: v === "1" })));
-    card.appendChild(adv);
+    // Wine 用に追加済みの MV/MZ を、ブラウザで直接遊べる形式へ変換する
+    const convertBox = document.createElement("div");
+    const offerConvert = (k) => {
+      if (html5 || k.html5Root === undefined || convertBox.firstChild) return;
+      const btn = document.createElement("button");
+      btn.className = "primary"; btn.style.width = "100%"; btn.style.marginTop = "10px";
+      btn.textContent = "ブラウザで直接遊べる形式に変換";
+      const st = document.createElement("p");
+      st.className = "status";
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          const file = await gameFile(g.id);
+          const index = await readZipIndex(file);
+          const size = await runWorker(html5Message(file, g.id, index, k.html5Root), (done, total) => {
+            st.textContent = "展開中… " + Math.floor((done / total) * 100) + "%（" + (done / 1048576).toFixed(0) + " / " + (total / 1048576).toFixed(0) + " MB）";
+          });
+          await removeGameFile(g.id); // Wine 用の ZIP はもう不要
+          update(g.id, { mode: "html5", size });
+          renderLibrary();
+        } catch (err) {
+          await removeHtml5(g.id);
+          st.className = "status err";
+          st.textContent = "変換できませんでした: " + err.message + " " + (await storageNote());
+          btn.disabled = false;
+        }
+      });
+      convertBox.append(btn, st);
+    };
+    if (g.kind && g.kind.v === KIND_VERSION) offerConvert(g.kind);
+    card.appendChild(convertBox);
+    const kindWatcher = new MutationObserver(() => {
+      const k = (loadMeta().find((x) => x.id === g.id) || {}).kind;
+      if (k && k.v === KIND_VERSION) { offerConvert(k); kindWatcher.disconnect(); }
+    });
+    kindWatcher.observe(kindEl, { childList: true, characterData: true, subtree: true });
+
+    if (!html5) {
+      card.appendChild(selectField("起動する EXE", g.exes.map((x) => [x, x]), g.exe, (v) => update(g.id, { exe: v })));
+      const adv = document.createElement("details");
+      const sum = document.createElement("summary"); sum.textContent = "詳細設定";
+      adv.appendChild(sum);
+      adv.appendChild(selectField("エンジン", [["jit", "高速（JIT）"], ["compat", "互換（遅いが安定）"]], g.engine, (v) => update(g.id, { engine: v })));
+      adv.appendChild(selectField("画面解像度", [["", "自動"], ["640x480", "640x480"], ["800x600", "800x600"], ["1024x768", "1024x768"]], g.resolution, (v) => update(g.id, { resolution: v })));
+      adv.appendChild(selectField("色数", [["32", "32bit"], ["16", "16bit"], ["8", "8bit（256色）"]], g.bpp, (v) => update(g.id, { bpp: v })));
+      adv.appendChild(selectField("サウンド", [["1", "オン"], ["0", "オフ"]], g.sound ? "1" : "0", (v) => update(g.id, { sound: v === "1" })));
+      adv.appendChild(selectField("ロケール", [["1", "日本語 (ja_JP)"], ["0", "英語（既定）"]], g.japanese ? "1" : "0", (v) => update(g.id, { japanese: v === "1" })));
+      card.appendChild(adv);
+    }
 
     const row = document.createElement("div");
     row.className = "row"; row.style.marginTop = "12px";
     const play = document.createElement("button");
-    play.className = "primary grow"; play.textContent = "起動";
-    play.addEventListener("click", () => launch(loadMeta().find((x) => x.id === g.id)));
+    play.className = "primary grow"; play.textContent = html5 ? "起動（ブラウザで直接）" : "起動（Wine）";
+    play.addEventListener("click", () => {
+      if (html5) location.href = "play/" + encodeURIComponent(g.id) + "/index.html";
+      else launch(loadMeta().find((x) => x.id === g.id));
+    });
     const del = document.createElement("button");
     del.className = "danger"; del.textContent = "削除";
     del.addEventListener("click", async () => {
       if (!confirm("「" + g.title + "」を削除しますか？（セーブデータは残ります）")) return;
       await removeGameFile(g.id);
+      await removeHtml5(g.id);
       saveMeta(loadMeta().filter((x) => x.id !== g.id));
       renderLibrary();
     });

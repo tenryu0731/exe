@@ -5,6 +5,8 @@
 //   { op: "copy",    file, id }                 … ZIP をそのまま保存
 //   { op: "rewrite", file, id, entries, cd }     … ファイル名を UTF-8 に変換して保存
 //   { op: "wrapExe", file, id, name }            … 単体 EXE を無圧縮 ZIP に包んで保存
+//   { op: "extract", file, id, root, entries, base } … HTML5 ゲーム（RPGツクールMV/MZ）を
+//        Cache Storage に展開する。root 配下のファイルだけを base + "play/<id>/<相対パス>" に保存
 // 応答: { type: "progress", done, total } / { type: "done", size } / { type: "error", message }
 "use strict";
 
@@ -192,10 +194,78 @@ async function wrapExe({ file, id, name }) {
   }
 }
 
+// ---------- HTML5 ゲームの展開 ----------
+const HTML5_CACHE = "exe-html5-v1";
+const MIME = {
+  html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8",
+  mjs: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8", css: "text/css; charset=utf-8",
+  txt: "text/plain; charset=utf-8", csv: "text/csv; charset=utf-8", xml: "application/xml",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+  bmp: "image/bmp", ico: "image/x-icon",
+  ogg: "audio/ogg", m4a: "audio/mp4", mp3: "audio/mpeg", wav: "audio/wav", mid: "audio/midi",
+  webm: "video/webm", mp4: "video/mp4",
+  woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", otf: "font/otf",
+  wasm: "application/wasm",
+};
+
+function mimeOf(path) {
+  const m = /\.([a-z0-9]+)$/i.exec(path);
+  return (m && MIME[m[1].toLowerCase()]) || "application/octet-stream";
+}
+
+function canonUrl(base, id, rel) {
+  return base + "play/" + encodeURIComponent(id) + "/" + rel.split("/").map(encodeURIComponent).join("/");
+}
+
+async function inflateRaw(blob) {
+  if (typeof DecompressionStream === "undefined") throw new Error("このブラウザは ZIP の展開（DecompressionStream）に未対応です");
+  return new Response(blob.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
+}
+
+async function extract({ file, id, root, entries, base }) {
+  const cache = await caches.open(HTML5_CACHE);
+  const targets = entries.filter((e) => !e.dir && e.name.startsWith(root) && e.name.length > root.length);
+  const total = targets.reduce((a, e) => a + e.compSize, 0) || 1;
+  const index = {};
+  let done = 0;
+  let written = 0;
+  let next = 0;
+
+  async function one(e) {
+    const head = await readBytes(file, e.localOffset, e.localOffset + 30);
+    const hv = new DataView(head.buffer);
+    if (hv.getUint32(0, true) !== 0x04034b50) throw new Error("ZIP のローカルヘッダが不正です: " + e.name);
+    const start = e.localOffset + 30 + hv.getUint16(26, true) + hv.getUint16(28, true);
+    const raw = file.slice(start, start + e.compSize);
+    let body;
+    if (e.method === 0) body = raw;
+    else if (e.method === 8) body = await inflateRaw(raw);
+    else throw new Error("未対応の圧縮形式です（" + e.method + "）: " + e.name);
+    const rel = e.name.slice(root.length).normalize("NFC");
+    await cache.put(canonUrl(base, id, rel), new Response(body, {
+      headers: { "Content-Type": mimeOf(rel), "Content-Length": String(body.size) },
+    }));
+    index[rel.toLowerCase()] = rel;
+    written += body.size;
+    done += e.compSize;
+    progress(done, total);
+  }
+
+  // 4 本並行で展開する
+  async function lane() {
+    while (next < targets.length) await one(targets[next++]);
+  }
+  await Promise.all([lane(), lane(), lane(), lane()]);
+
+  await cache.put(base + "play/" + encodeURIComponent(id) + "/.exe-index.json",
+    new Response(JSON.stringify(index), { headers: { "Content-Type": "application/json" } }));
+  return written;
+}
+
 self.onmessage = async (event) => {
   const msg = event.data;
   try {
-    const fn = { copy, rewrite, wrapExe }[msg.op];
+    const fn = { copy, rewrite, wrapExe, extract }[msg.op];
     if (!fn) throw new Error("unknown op " + msg.op);
     const size = await fn(msg);
     postMessage({ type: "done", size });
