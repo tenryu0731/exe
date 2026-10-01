@@ -1,0 +1,72 @@
+/* boxedwine.html（エミュレーター画面）に注入するスマホ向けスタイル */
+:root {
+  --m-bg: #101418;
+  --m-panel: #1c232b;
+  --m-key: #2b3540;
+  --m-key-active: #3f6fd8;
+  --m-text: #f2f5f8;
+  --m-border: #46525f;
+}
+html, body { background: var(--m-bg); color: var(--m-text); }
+body { padding-bottom: env(safe-area-inset-bottom); }
+#controls { color: var(--m-text); font-size: 13px; }
+#controls button, #controls input { font-size: 13px; }
+#console { display: none; }
+body.m-console #console { display: block; }
+#dropzone { padding: 0; touch-action: none; }
+div.emscripten_border { border-color: var(--m-border); }
+#status, #loading { color: var(--m-text); }
+
+#m-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  padding-top: max(6px, env(safe-area-inset-top));
+  background: var(--m-panel);
+  border-bottom: 1px solid var(--m-border);
+  flex: 0 0 auto;
+  font: 14px/1.2 system-ui, -apple-system, "Hiragino Sans", sans-serif;
+}
+#m-bar a, #m-bar button {
+  color: var(--m-text);
+  background: var(--m-key);
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  text-decoration: none;
+  font: inherit;
+}
+#m-bar .m-spacer { flex: 1; }
+
+#m-keys {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  padding: 6px 8px 8px;
+  background: var(--m-panel);
+  border-top: 1px solid var(--m-border);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+#m-keys.m-hidden { display: none; }
+#m-keys button {
+  min-height: 44px;
+  color: var(--m-text);
+  background: var(--m-key);
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  font: 600 15px/1 system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+#m-keys button.m-down, #m-keys button.m-latched { background: var(--m-key-active); }
+#m-text {
+  position: fixed;
+  left: -1000px;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  opacity: 0;
+}

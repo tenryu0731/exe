@@ -1,0 +1,40 @@
+# EXE Launcher
+
+iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための Web アプリです。
+[Boxedwine](https://github.com/danoon2/Boxedwine)（Wine を WebAssembly 上で動かすエミュレーター）を GitHub Actions でビルドし、GitHub Pages で公開します。
+
+公開URL（Pages を有効化した後）: https://tenryu0731.github.io/exe/
+
+## 初回セットアップ（1回だけ）
+
+1. GitHub のリポジトリで **Settings → Pages → Build and deployment → Source** を **GitHub Actions** にする
+2. **Actions** タブで「Build & Deploy」を実行する（`main` に push すると自動実行。初回失敗時は *Re-run all jobs*）
+3. 完了後、上の公開URLを Safari で開く（ホーム画面に追加するとアプリ風に使える）
+
+## 使い方
+
+1. PC でゲームのフォルダを ZIP にして、iCloud Drive などで iPhone の「ファイル」に置く
+2. ランチャーで「ファイルを選ぶ」→ ZIP（または単体の .exe）を選ぶ
+3. 起動する EXE を選んで「起動」
+   - 初回は Wine 本体（約170MB）をダウンロードします。Wi-Fi 推奨。以後はブラウザ内にキャッシュ
+   - タップ＝マウスクリック。下部ボタンでキー入力、「文字入力」で英数字入力
+
+## 構成
+
+| パス | 内容 |
+| --- | --- |
+| `site/index.html` | ランチャー（ゲーム追加・一覧・起動設定） |
+| `site/sw.js` | Service Worker。ゲームZIPの配信、分割した Wine ファイルシステムの結合とキャッシュ、COOP/COEP 付与 |
+| `site/mobile.js`, `mobile.css` | エミュレーター画面に注入するスマホ用UI（仮想キー等） |
+| `scripts/patch-shell.py` | Boxedwine の `shell.html` に上記UIを差し込む |
+| `.github/workflows/deploy.yml` | Boxedwine（JIT版・互換版）のビルドと Pages への配備 |
+
+## 制限
+
+- 主な対象は軽い 2D の古いゲーム。Direct3D 10 以降は非対応（Boxedwine 26R2 の changeLog より）
+- iPhone のメモリ・CPU 次第で、起動しない／非常に遅いことがある
+- 日本語フォントが Wine のファイルシステムに含まれていない場合、日本語が文字化け（□）する可能性あり（未検証）
+
+## ライセンス
+
+Boxedwine は GPL-2.0。ビルド済みエンジンの元コミットは配備物の `engine/BOXEDWINE_VERSION.txt` に記録されます。

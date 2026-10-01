@@ -1,0 +1,117 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # 上流 Boxedwine の固定コミット（更新する場合はここを書き換える）
+  BOXEDWINE_COMMIT: 922848c4443012d0ed6b8acba581cc2ada6fe482
+  EMSDK_VERSION: 6.0.10
+  # Wine 11 ファイルシステム（上流 tools/buildWine/webgl_filesystems_v11.json の full-v11 プロファイル）
+  FS_URL: https://boxedwine.org/v2/11/TinyCore15Wine11.0.zip
+  FS_SHA256: 13993bf74c3421304ee50e247ff628ca47d75ae3118e10967a388e8a664aabee
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Boxedwine
+        run: |
+          git init boxedwine
+          cd boxedwine
+          git remote add origin https://github.com/danoon2/Boxedwine.git
+          git fetch --depth 1 origin "$BOXEDWINE_COMMIT"
+          git checkout --quiet FETCH_HEAD
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Patch Boxedwine for mobile
+        working-directory: boxedwine/project/emscripten
+        run: |
+          python3 "$GITHUB_WORKSPACE/scripts/patch-shell.py" shell.html
+          # 新しい emscripten では emcc でのリンク時に libc++ が入らないため em++ でリンクする
+          sed -i 's/^\t@\$(CC) \$(ALL) -o \$@ \$(LDFLAGS)$/\t@$(CXX) $(ALL) -o $@ $(LDFLAGS)/' makefile
+          grep -q '@$(CXX) $(ALL) -o' makefile
+
+      - name: Build engines
+        working-directory: boxedwine/project/emscripten
+        run: |
+          make jit
+          make release
+
+      - name: Cache Wine filesystem
+        id: fscache
+        uses: actions/cache@v4
+        with:
+          path: fs-download
+          key: fs-${{ env.FS_SHA256 }}
+
+      - name: Download Wine filesystem
+        if: steps.fscache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p fs-download
+          curl -fSL --retry 5 -o fs-download/boxedwine.zip "$FS_URL"
+
+      - name: Assemble site
+        run: |
+          set -euo pipefail
+          echo "$FS_SHA256  fs-download/boxedwine.zip" | sha256sum -c -
+          rm -rf _site
+          cp -r site _site
+
+          for pair in jit:Jit compat:Release; do
+            name="${pair%%:*}"; dir="${pair##*:}"
+            mkdir -p "_site/engine/$name"
+            cp boxedwine/project/emscripten/Build/$dir/boxedwine.{html,js,wasm,css} \
+               boxedwine/project/emscripten/Build/$dir/boxedwine-shell.js "_site/engine/$name/"
+          done
+
+          # GitHub Pages の 1 ファイル上限を避けるため 45MB ごとに分割（Service Worker が結合する）
+          mkdir -p _site/fs
+          split -b 45M -d -a 3 fs-download/boxedwine.zip _site/fs/boxedwine.zip.
+          python3 - <<'EOF'
+          import json, os
+          parts = sorted(p for p in os.listdir("_site/fs") if p.startswith("boxedwine.zip."))
+          json.dump({
+              "sha256": os.environ["FS_SHA256"],
+              "size": os.path.getsize("fs-download/boxedwine.zip"),
+              "parts": parts,
+          }, open("_site/fs/parts.json", "w"))
+          EOF
+          cat > _site/engine/BOXEDWINE_VERSION.txt <<EOF
+          Boxedwine commit: $BOXEDWINE_COMMIT (https://github.com/danoon2/Boxedwine, GPL-2.0)
+          Filesystem: $FS_URL sha256=$FS_SHA256
+          EOF
+          touch _site/.nojekyll
+          du -sh _site; ls -la _site _site/engine/* _site/fs
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

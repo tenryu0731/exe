@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>EXE Launcher</title>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --text: #15191e;
+    --muted: #4d5865;
+    --border: #cfd6de;
+    --accent: #1f5fd1;
+    --accent-text: #ffffff;
+    --danger: #b3261e;
+    --ok: #1d6b36;
+    --warn-bg: #fff4d6;
+    --warn-text: #5a4300;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101418;
+      --panel: #1b2229;
+      --text: #eef2f6;
+      --muted: #a9b4c0;
+      --border: #38434f;
+      --accent: #5b8ff0;
+      --accent-text: #0b1220;
+      --danger: #ff8a80;
+      --ok: #7fd49a;
+      --warn-bg: #3a3000;
+      --warn-text: #ffe28a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101418; --panel: #1b2229; --text: #eef2f6; --muted: #a9b4c0; --border: #38434f;
+    --accent: #5b8ff0; --accent-text: #0b1220; --danger: #ff8a80; --ok: #7fd49a;
+    --warn-bg: #3a3000; --warn-text: #ffe28a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.55 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 22px; margin: 4px 0 2px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .card h2 { font-size: 16px; margin: 0 0 10px; }
+  button, .btn, select {
+    font: inherit;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    padding: 10px 14px;
+    min-height: 44px;
+  }
+  .primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  .danger { color: var(--danger); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .grow { flex: 1 1 auto; min-width: 0; }
+  label.field { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  select { width: 100%; }
+  #picker { display: none; }
+  .status { font-size: 14px; color: var(--muted); }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--danger); }
+  .game-title { font-weight: 600; word-break: break-all; }
+  .game-meta { font-size: 13px; color: var(--muted); }
+  .note { background: var(--warn-bg); color: var(--warn-text); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-top: 8px; }
+  ul.help { padding-left: 20px; margin: 6px 0; font-size: 14px; }
+  .empty { color: var(--muted); font-size: 14px; }
+  progress { width: 100%; }
+</style>
+</head>
+<body>
+  <h1>EXE Launcher</h1>
+  <p class="sub">Windows のゲーム（.exe）をブラウザ内の Wine（Boxedwine）で動かします。</p>
+
+  <div class="card">
+    <h2>ゲームを追加</h2>
+    <p class="status" style="margin-top:0">ゲームのフォルダを ZIP にしたもの、または単体の .exe を選んでください。</p>
+    <input id="picker" type="file" accept=".zip,.exe,application/zip,application/x-zip-compressed,application/octet-stream">
+    <button class="primary" id="pick">ファイルを選ぶ</button>
+    <p id="add-status" class="status"></p>
+  </div>
+
+  <div class="card">
+    <h2>ライブラリ</h2>
+    <div id="library"><p class="empty">まだゲームがありません。</p></div>
+  </div>
+
+  <div class="card">
+    <h2>エンジン</h2>
+    <p id="engine-status" class="status">確認中…</p>
+    <progress id="engine-progress" hidden></progress>
+    <div class="row" style="margin-top:8px">
+      <button id="prefetch">Wine を事前ダウンロード（約170MB）</button>
+    </div>
+  </div>
+
+  <div class="note">
+    動作するのは主に軽い 2D の古いゲームです（DirectX 9 以下）。iPhone の性能・メモリでは重いゲームは起動しないか非常に遅くなります。
+  </div>
+
+  <details>
+    <summary>使い方・ヒント</summary>
+    <ul class="help">
+      <li>PC でゲームのフォルダを ZIP に圧縮し、iCloud Drive などで iPhone の「ファイル」に入れておくと選びやすいです。</li>
+      <li>起動する .exe はライブラリで選び直せます（setup.exe ではなくゲーム本体を選ぶ）。</li>
+      <li>画面タップがマウスクリックになります。下部のボタンでキー入力、「文字入力」で英数字を打てます。</li>
+      <li>セーブデータはこのブラウザ内（ゲームごと）に保存されます。Safari の履歴・サイトデータを消すと消えます。</li>
+      <li>動かないときは「互換エンジン」、解像度 640x480、色数 16bit などを試してください。</li>
+    </ul>
+  </details>
+
+<script src="jszip.min.js"></script>
+<script>
+"use strict";
+const GAME_CACHE = "exe-games-v1";
+const APP_DIR = "/home/username/.wine/dosdevices/c:/files";
+const META_KEY = "exe-launcher-games-v1";
+const $ = (id) => document.getElementById(id);
+
+// ---------- メタデータ（ゲーム一覧） ----------
+function loadMeta() {
+  try { return JSON.parse(localStorage.getItem(META_KEY) || "[]"); } catch (e) { return []; }
+}
+function saveMeta(list) {
+  try { localStorage.setItem(META_KEY, JSON.stringify(list)); } catch (e) {}
+}
+
+// ---------- Service Worker ----------
+async function ensureServiceWorker() {
+  if (!("serviceWorker" in navigator)) throw new Error("このブラウザは Service Worker に未対応です");
+  const reg = await navigator.serviceWorker.register("sw.js");
+  await navigator.serviceWorker.ready;
+  if (!navigator.serviceWorker.controller) {
+    // 初回登録直後はページが SW 管理下にないので一度だけ再読み込み
+    if (!sessionStorage.getItem("sw-reloaded")) {
+      sessionStorage.setItem("sw-reloaded", "1");
+      location.reload();
+      return new Promise(() => {});
+    }
+  }
+  return reg;
+}
+
+async function fsCached() {
+  for (const name of await caches.keys()) {
+    if (name.startsWith("exe-fs-")) {
+      const c = await caches.open(name);
+      if (await c.match(new URL("fs/boxedwine.zip", location.href).href)) return true;
+    }
+  }
+  return false;
+}
+
+async function refreshEngineStatus() {
+  const el = $("engine-status");
+  if (await fsCached()) {
+    el.textContent = "Wine はダウンロード済みです。";
+    el.className = "status ok";
+    $("prefetch").hidden = true;
+  } else {
+    el.textContent = "Wine は未ダウンロードです（初回起動時に自動で取得します）。Wi-Fi 推奨。";
+    el.className = "status";
+  }
+}
+
+$("prefetch").addEventListener("click", () => {
+  const sw = navigator.serviceWorker.controller;
+  if (!sw) return;
+  $("engine-status").textContent = "ダウンロード中…（数分かかることがあります）";
+  $("engine-progress").hidden = false;
+  $("prefetch").disabled = true;
+  sw.postMessage("prefetch-fs");
+});
+navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", (e) => {
+  if (!e.data) return;
+  $("engine-progress").hidden = true;
+  $("prefetch").disabled = false;
+  if (e.data.type === "fs-ready") refreshEngineStatus();
+  if (e.data.type === "fs-error") {
+    $("engine-status").textContent = "ダウンロード失敗: " + e.data.message;
+    $("engine-status").className = "status err";
+  }
+});
+
+// ---------- ZIP 処理 ----------
+const utf8 = new TextDecoder("utf-8", { fatal: true });
+let sjis = null;
+try { sjis = new TextDecoder("shift_jis"); } catch (e) {}
+
+function isExe(name) { return /\.(exe|bat)$/i.test(name); }
+
+// 起動候補の並び順：インストーラや設定ツールを後ろに
+function exeScore(path) {
+  const base = path.split("/").pop().toLowerCase();
+  let s = path.split("/").length * 10;
+  if (/^(setup|install|unins|uninst|config|setting|patch|update|dxsetup|vcredist|directx)/.test(base)) s += 100;
+  if (/\.bat$/.test(base)) s += 50;
+  if (/(game|start|launch|play)/.test(base)) s -= 5;
+  return s;
+}
+
+async function readAsZip(file) {
+  let needsRepack = false;
+  if (/\.exe$/i.test(file.name)) {
+    const zip = new JSZip();
+    zip.file(file.name, file);
+    return { zip, needsRepack: true };
+  }
+  const zip = await JSZip.loadAsync(file, {
+    decodeFileName: (bytes) => {
+      try { return utf8.decode(bytes); }
+      catch (e) {
+        needsRepack = true; // Windows で作った日本語ファイル名（Shift_JIS）
+        return sjis ? sjis.decode(bytes) : String.fromCharCode.apply(null, bytes);
+      }
+    },
+  });
+  return { zip, needsRepack };
+}
+
+function safeId(name) {
+  const base = name.replace(/\.(zip|exe)$/i, "").normalize("NFKC").replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24) || "game";
+  return base + "-" + Date.now().toString(36);
+}
+
+$("pick").addEventListener("click", () => $("picker").click());
+$("picker").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const st = $("add-status");
+  st.className = "status";
+  st.textContent = "読み込み中… " + file.name;
+  try {
+    const { zip, needsRepack } = await readAsZip(file);
+    const exes = Object.values(zip.files).filter((f) => !f.dir && isExe(f.name)).map((f) => f.name);
+    if (!exes.length) throw new Error("ZIP の中に .exe が見つかりません");
+    exes.sort((a, b) => exeScore(a) - exeScore(b) || a.localeCompare(b));
+
+    let blob = file;
+    if (needsRepack) {
+      st.textContent = "ファイル名を変換して再圧縮中…";
+      blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 1 } });
+    }
+    const id = safeId(file.name);
+    const cache = await caches.open(GAME_CACHE);
+    await cache.put(new URL("games/" + id + ".zip", location.href).href,
+      new Response(blob, { headers: { "Content-Type": "application/zip" } }));
+
+    const list = loadMeta();
+    list.unshift({ id, title: file.name.replace(/\.(zip|exe)$/i, ""), exes, exe: exes[0],
+      engine: "jit", resolution: "", bpp: "32", sound: true, japanese: true, size: blob.size, added: Date.now() });
+    saveMeta(list);
+    st.className = "status ok";
+    st.textContent = "追加しました: " + file.name;
+    renderLibrary();
+  } catch (err) {
+    st.className = "status err";
+    st.textContent = "追加できませんでした: " + err.message;
+  }
+});
+
+// ---------- ライブラリ表示 ----------
+function option(value, label, selected) {
+  const o = document.createElement("option");
+  o.value = value; o.textContent = label; o.selected = value === selected;
+  return o;
+}
+function selectField(labelText, options, value, onChange) {
+  const wrap = document.createElement("div");
+  const lab = document.createElement("label");
+  lab.className = "field"; lab.textContent = labelText;
+  const sel = document.createElement("select");
+  for (const [v, l] of options) sel.appendChild(option(v, l, value));
+  sel.addEventListener("change", () => onChange(sel.value));
+  wrap.append(lab, sel);
+  return wrap;
+}
+
+function renderLibrary() {
+  const root = $("library");
+  const list = loadMeta();
+  root.innerHTML = "";
+  if (!list.length) {
+    root.innerHTML = '<p class="empty">まだゲームがありません。</p>';
+    return;
+  }
+  const update = (id, patch) => {
+    const l = loadMeta();
+    const g = l.find((x) => x.id === id);
+    if (g) Object.assign(g, patch);
+    saveMeta(l);
+  };
+  for (const g of list) {
+    const card = document.createElement("div");
+    card.className = "card";
+    const title = document.createElement("div");
+    title.className = "game-title"; title.textContent = g.title;
+    const meta = document.createElement("div");
+    meta.className = "game-meta";
+    meta.textContent = (g.size / 1048576).toFixed(1) + " MB";
+    card.append(title, meta);
+
+    card.appendChild(selectField("起動する EXE", g.exes.map((x) => [x, x]), g.exe, (v) => update(g.id, { exe: v })));
+    const adv = document.createElement("details");
+    const sum = document.createElement("summary"); sum.textContent = "詳細設定";
+    adv.appendChild(sum);
+    adv.appendChild(selectField("エンジン", [["jit", "高速（JIT）"], ["compat", "互換（遅いが安定）"]], g.engine, (v) => update(g.id, { engine: v })));
+    adv.appendChild(selectField("画面解像度", [["", "自動"], ["640x480", "640x480"], ["800x600", "800x600"], ["1024x768", "1024x768"]], g.resolution, (v) => update(g.id, { resolution: v })));
+    adv.appendChild(selectField("色数", [["32", "32bit"], ["16", "16bit"], ["8", "8bit（256色）"]], g.bpp, (v) => update(g.id, { bpp: v })));
+    adv.appendChild(selectField("サウンド", [["1", "オン"], ["0", "オフ"]], g.sound ? "1" : "0", (v) => update(g.id, { sound: v === "1" })));
+    adv.appendChild(selectField("ロケール", [["1", "日本語 (ja_JP)"], ["0", "英語（既定）"]], g.japanese ? "1" : "0", (v) => update(g.id, { japanese: v === "1" })));
+    card.appendChild(adv);
+
+    const row = document.createElement("div");
+    row.className = "row"; row.style.marginTop = "12px";
+    const play = document.createElement("button");
+    play.className = "primary grow"; play.textContent = "起動";
+    play.addEventListener("click", () => launch(loadMeta().find((x) => x.id === g.id)));
+    const del = document.createElement("button");
+    del.className = "danger"; del.textContent = "削除";
+    del.addEventListener("click", async () => {
+      if (!confirm("「" + g.title + "」を削除しますか？（セーブデータは残ります）")) return;
+      const cache = await caches.open(GAME_CACHE);
+      await cache.delete(new URL("games/" + g.id + ".zip", location.href).href);
+      saveMeta(loadMeta().filter((x) => x.id !== g.id));
+      renderLibrary();
+    });
+    row.append(play, del);
+    card.appendChild(row);
+    root.appendChild(card);
+  }
+}
+
+// ---------- 起動 ----------
+function launch(g) {
+  const slash = g.exe.lastIndexOf("/");
+  const dir = slash >= 0 ? g.exe.slice(0, slash) : "";
+  const exe = slash >= 0 ? g.exe.slice(slash + 1) : g.exe;
+  const params = [
+    "app=" + encodeURIComponent(g.id),
+    "appBase=" + encodeURIComponent("../../games/"),
+    "rootBase=" + encodeURIComponent("../../fs/"),
+    "root=boxedwine",
+    "p=" + encodeURIComponent(exe),
+    "w=" + encodeURIComponent(dir ? APP_DIR + "/" + dir : APP_DIR),
+    "auto=true",
+    "bpp=" + g.bpp,
+    "sound=" + (g.sound ? "true" : "false"),
+  ];
+  if (g.resolution) params.push("resolution=" + g.resolution);
+  // Boxedwine の env 引数は 'KEY:VALUE' をクォートした形式
+  if (g.japanese) params.push("env=%27LANG:ja_JP.UTF-8%27");
+  const engine = g.engine === "compat" ? "compat" : "jit";
+  location.href = "engine/" + engine + "/boxedwine.html?" + params.join("&");
+}
+
+// ---------- 初期化 ----------
+(async () => {
+  renderLibrary();
+  try {
+    await ensureServiceWorker();
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    await refreshEngineStatus();
+  } catch (err) {
+    $("engine-status").textContent = "初期化エラー: " + err.message;
+    $("engine-status").className = "status err";
+  }
+})();
+</script>
+</body>
+</html>
