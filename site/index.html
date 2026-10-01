@@ -9,6 +9,9 @@
 <meta property="og:title" content="EXE Launcher — Run Windows .exe in your browser">
 <meta property="og:description" content="Run Windows .exe files in your browser on any device. No install, no upload.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://tenryu0731.github.io/exe/">
+<meta property="og:image" content="https://tenryu0731.github.io/exe/icon.svg">
+<link rel="canonical" href="https://tenryu0731.github.io/exe/">
 <meta name="theme-color" content="#1f5fd1">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -98,11 +101,14 @@
   progress { width: 100%; }
   header { display: flex; align-items: flex-start; gap: 8px; }
   header .grow { min-width: 0; }
-  #lang { min-height: 36px; padding: 6px 10px; font-size: 14px; }
+  #lang { min-height: 36px; padding: 6px 10px; font-size: 14px; white-space: nowrap; flex: 0 0 auto; }
   #drop-overlay { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center;
     background: rgba(31, 95, 209, .18); border: 4px dashed var(--accent); font-size: 22px; font-weight: 700; color: var(--text); }
   body.dragging #drop-overlay { display: flex; }
   #drop-overlay span { background: var(--panel); padding: 12px 20px; border-radius: 12px; }
+  .faq { font-size: 14px; margin: 6px 0; }
+  .faq dt { font-weight: 600; margin-top: 8px; }
+  .faq dd { margin: 2px 0 0; color: var(--muted); }
   .hint { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
 </style>
 </head>
@@ -154,6 +160,16 @@
       <li data-i18n="help.4"></li>
       <li data-i18n="help.5"></li>
     </ul>
+  </details>
+
+  <details>
+    <summary data-i18n="faq.title"></summary>
+    <dl class="faq">
+      <dt data-i18n="faq.q1"></dt><dd data-i18n="faq.a1"></dd>
+      <dt data-i18n="faq.q2"></dt><dd data-i18n="faq.a2"></dd>
+      <dt data-i18n="faq.q3"></dt><dd data-i18n="faq.a3"></dd>
+      <dt data-i18n="faq.q4"></dt><dd data-i18n="faq.a4"></dd>
+    </dl>
   </details>
 
   <details id="changes-box">
