@@ -26,23 +26,29 @@ DEST = "home/username/.wine/drive_c/windows/Fonts/"
 LOCALE_SRC = "usr/lib/locale/en_US.utf8/"
 LOCALE_DST = "usr/lib/locale/ja_JP.utf8/"
 
-# (英語名, 日本語名, PostScript 名)
+# (英語名, 日本語名, PostScript 名, 等幅か)
 FACES = [
-    ("MS Gothic", "ＭＳ ゴシック", "MS-Gothic"),
-    ("MS PGothic", "ＭＳ Ｐゴシック", "MS-PGothic"),
-    ("MS UI Gothic", None, "MS-UIGothic"),
-    ("MS Mincho", "ＭＳ 明朝", "MS-Mincho"),
-    ("MS PMincho", "ＭＳ Ｐ明朝", "MS-PMincho"),
-    ("Meiryo", "メイリオ", "Meiryo"),
-    ("Meiryo UI", None, "Meiryo-UI"),
-    ("Yu Gothic", "游ゴシック", "YuGothic-Regular"),
-    ("Yu Gothic UI", None, "YuGothicUI-Regular"),
-    ("Yu Mincho", "游明朝", "YuMincho-Regular"),
+    ("MS Gothic", "ＭＳ ゴシック", "MS-Gothic", True),
+    ("MS PGothic", "ＭＳ Ｐゴシック", "MS-PGothic", False),
+    ("MS UI Gothic", None, "MS-UIGothic", False),
+    ("MS Mincho", "ＭＳ 明朝", "MS-Mincho", True),
+    ("MS PMincho", "ＭＳ Ｐ明朝", "MS-PMincho", False),
+    ("Meiryo", "メイリオ", "Meiryo", False),
+    ("Meiryo UI", None, "Meiryo-UI", False),
+    ("Yu Gothic", "游ゴシック", "YuGothic-Regular", False),
+    ("Yu Gothic UI", None, "YuGothicUI-Regular", False),
+    ("Yu Mincho", "游明朝", "YuMincho-Regular", False),
 ]
 
 
-def face(src, en, ja, ps):
+def face(src, en, ja, ps, fixed):
     font = TTFont(src)
+    # 平均文字幅を半角（全角の半分）にする。Kosugi は全角に近い値（1013/1024）で、Windows の MS ゴシックは
+    # 半角幅。これを文字の配置に使うソフト（コンソール窓や古いゲーム）で文字の間が全角分あいてしまう
+    font["OS/2"].xAvgCharWidth = font["head"].unitsPerEm // 2
+    if fixed:
+        font["post"].isFixedPitch = 1
+        font["OS/2"].panose.bProportion = 9  # monospaced
     if "DSIG" in font:
         del font["DSIG"]
     name = font["name"]

@@ -252,7 +252,7 @@ function looksJapanese(names, title) {
 
 async function addItems(items, title) {
   const st = $("add-status");
-  const buttons = [$("pick"), $("pick-folder"), $("demo")];
+  const buttons = [$("pick"), $("pick-folder"), $("demo"), $("testpack")];
   st.className = "status";
   st.textContent = t("add.reading", { name: title });
   buttons.forEach((b) => (b.disabled = true));
@@ -384,6 +384,14 @@ $("demo").addEventListener("click", async () => {
   if (!id) return;
   updateMeta(id, { demo: true, exe: "7zFM.exe" });
   start(loadMeta().find((g) => g.id === id));
+});
+
+// テスト用セット（scripts/testpack）：種類の違う小さな exe を 1 つにまとめたもの。ライブラリに追加するだけで、
+// どれを起動するかは「起動するファイル」で選ぶ
+$("testpack").addEventListener("click", async () => {
+  const blob = await (await fetch("demo/testpack.zip")).blob();
+  const id = await addItems([{ file: new File([blob], "testpack.zip", { type: "application/zip" }), path: "testpack.zip" }], t("add.testpackTitle"));
+  if (id) { const card = document.querySelector("#library .card"); if (card) card.scrollIntoView({ behavior: "smooth", block: "start" }); }
 });
 
 // ---------- ライブラリ表示 ----------

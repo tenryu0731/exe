@@ -31,6 +31,7 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 | `scripts/prepare-filesystem.py` | Wine 本体の `.update-timestamp` を上記に合わせる（`--prune` で上流 Web 版と同じ規則のファイル削減も可能、既定では行わない） |
 | `site/wine-saves.js` | Wine で動かしたソフトが作成・変更したファイル（Boxedwine がゲームごとの IndexedDB に保存）の書き出しと取り込み |
 | `scripts/add-japanese.py` | Wine 本体に日本語環境を追加：ja_JP ロケール（無いと日本語モード＝コードページ 932 にならない）と、Kosugi フォントを「MS ゴシック」「MS 明朝」「メイリオ」等の名前で引けるようにしたフォント集（無いと日本語が □ になる） |
+| `scripts/testpack/` | 「テスト用セット」（`site/demo/testpack.zip`）のソースと作成スクリプト `build.sh`（mingw-w64 が必要） |
 | `scripts/probe/` | E2E 用の確認アプリ。日本語フォルダ・自分のフォルダへの保存・DirectX・日本語フォントなどを Wine 上で試す |
 | `.github/workflows/mirror-fs.yml` | 開発用。配信用に整えた Wine 本体を `fs-mirror` ブランチに置く（開発環境から配布元に直接つながらないため） |
 | `site/run64.html`, `run64.js` | 64bit の exe を wine64（Boxedwine64、`scripts/fetch-engine64.sh` で WindowsAppPlayer から取得）で動かす |

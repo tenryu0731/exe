@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-10-02 (4)",
+    "items": [
+      "「テスト用セットを追加」ボタン：日本語・セーブ・DirectX、入力（タッチ・キー・文字）、動きと音、コンソール、バッチ、64bit、DOS を 1 つずつ試せる小さな exe 集",
+      "日本語フォントの平均文字幅を MS ゴシックと同じ半角幅に（文字の配置に使う古いゲームで文字の間が広がるのを防ぐ）"
+    ],
+    "items_en": [
+      "\"Add the test pack\" button: small exes to try Japanese text, saves and DirectX, input (touch, keys, text), animation and sound, console, batch, 64-bit and DOS one by one",
+      "The Japanese font now reports a half-width average character width like MS Gothic, so old games that lay out text with it no longer spread characters apart"
+    ]
+  },
+  {
     "date": "2026-10-02 (3)",
     "items": [
       "Wine で動かすソフト全般のセーブに対応：ソフトが作成・変更したファイルを、まとめて ZIP で書き出したり 1 つずつ保存したりできるように",
