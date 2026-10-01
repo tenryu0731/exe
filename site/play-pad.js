@@ -4,16 +4,25 @@
 (function () {
   "use strict";
 
+  // 言語はランチャーが cookie "exe-lang" に保存したもの
+  const EN = /(?:^|;\s*)exe-lang=en/.test(document.cookie) ||
+    (!/(?:^|;\s*)exe-lang=/.test(document.cookie) && !(navigator.language || "").toLowerCase().startsWith("ja"));
+  const L = EN
+    ? { ok: "OK", cancel: "Back", dash: "Dash", menu: "Menu", back: "Back to launcher",
+        confirm: "Return to the launcher? (Unsaved progress will be lost.)", show: "Show keys", hide: "Hide keys" }
+    : { ok: "決定", cancel: "戻る", dash: "ダッシュ", menu: "メニュー", back: "ランチャーに戻る",
+        confirm: "ランチャーに戻りますか？（セーブしていない進行は失われます）", show: "キー表示", hide: "キー非表示" };
+
   // [表示, key, code, keyCode]
   const KEYS = {
     up: ["▲", "ArrowUp", "ArrowUp", 38],
     down: ["▼", "ArrowDown", "ArrowDown", 40],
     left: ["◀", "ArrowLeft", "ArrowLeft", 37],
     right: ["▶", "ArrowRight", "ArrowRight", 39],
-    ok: ["決定", "z", "KeyZ", 90],
-    cancel: ["戻る", "x", "KeyX", 88],
-    dash: ["ダッシュ", "Shift", "ShiftLeft", 16],
-    menu: ["メニュー", "Escape", "Escape", 27],
+    ok: [L.ok, "z", "KeyZ", 90],
+    cancel: [L.cancel, "x", "KeyX", 88],
+    dash: [L.dash, "Shift", "ShiftLeft", 16],
+    menu: [L.menu, "Escape", "Escape", 27],
     pageup: ["Q", "q", "KeyQ", 81],
     pagedown: ["W", "w", "KeyW", 87],
   };
@@ -115,9 +124,9 @@
     const back = document.createElement("a");
     back.href = "../../";
     back.textContent = "×";
-    back.setAttribute("aria-label", "ランチャーに戻る");
+    back.setAttribute("aria-label", L.back);
     back.addEventListener("click", (e) => {
-      if (!confirm("ランチャーに戻りますか？（セーブしていない進行は失われます）")) e.preventDefault();
+      if (!confirm(L.confirm)) e.preventDefault();
     });
     top.append(toggle, back);
 
@@ -125,7 +134,7 @@
     try { hidden = sessionStorage.getItem("xp-pad-hidden") === "1"; } catch (e) {}
     const apply = () => {
       pad.classList.toggle("xp-hidden", hidden);
-      toggle.textContent = hidden ? "キー表示" : "キー非表示";
+      toggle.textContent = hidden ? L.show : L.hide;
     };
     toggle.addEventListener("click", () => {
       hidden = !hidden;

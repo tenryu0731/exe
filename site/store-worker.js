@@ -4,7 +4,7 @@
 // メッセージ:
 //   { op: "copy",    file, id }                 … ZIP をそのまま保存
 //   { op: "rewrite", file, id, entries, cd }     … ファイル名を UTF-8 に変換して保存
-//   { op: "wrapExe", file, id, name }            … 単体 EXE を無圧縮 ZIP に包んで保存
+//   { op: "pack", id, entries: [{ name, file }] } … 複数ファイル（フォルダ・単体 EXE/MSI）を無圧縮 ZIP にまとめて保存
 //   { op: "extract", file, id, root, entries, base } … HTML5 ゲーム（RPGツクールMV/MZ）を
 //        Cache Storage に展開する。root 配下のファイルだけを base + "play/<id>/<相対パス>" に保存
 // 応答: { type: "progress", done, total } / { type: "done", size } / { type: "error", message }
@@ -134,54 +134,65 @@ function crc32(crc, bytes) {
   return ~crc >>> 0;
 }
 
-async function wrapExe({ file, id, name }) {
-  if (file.size >= 0xffffffff) throw new Error("EXE が大きすぎます");
+// 複数ファイル（フォルダや単体 EXE / MSI）を無圧縮 ZIP にまとめて保存する。名前は UTF-8
+async function pack({ id, entries }) {
   const out = await openTarget(id);
   try {
-    const nameBytes = new TextEncoder().encode(name);
-    const local = new Uint8Array(30);
-    const lv = new DataView(local.buffer);
-    lv.setUint32(0, 0x04034b50, true);
-    lv.setUint16(4, 20, true);
-    lv.setUint16(6, 0x0800, true);
-    lv.setUint16(8, 0, true); // 無圧縮
-    lv.setUint32(18, file.size, true);
-    lv.setUint32(22, file.size, true);
-    lv.setUint16(26, nameBytes.length, true);
-    let pos = 30 + nameBytes.length;
-    let crc = 0;
-    for (let p = 0; p < file.size; p += CHUNK) {
-      const bytes = await readBytes(file, p, Math.min(file.size, p + CHUNK));
-      crc = crc32(crc, bytes);
-      out.write(bytes, { at: pos });
-      pos += bytes.length;
-      progress(p + bytes.length, file.size);
+    const enc = new TextEncoder();
+    const total = entries.reduce((a, e) => a + e.file.size, 0) || 1;
+    const central = [];
+    let pos = 0;
+    let done = 0;
+    for (const e of entries) {
+      if (e.file.size >= 0xffffffff) throw new Error("file too large: " + e.name);
+      const name = enc.encode(e.name);
+      const start = pos;
+      pos += 30 + name.length;
+      let crc = 0;
+      for (let p = 0; p < e.file.size; p += CHUNK) {
+        const bytes = await readBytes(e.file, p, Math.min(e.file.size, p + CHUNK));
+        crc = crc32(crc, bytes);
+        out.write(bytes, { at: pos });
+        pos += bytes.length;
+        done += bytes.length;
+        progress(done, total);
+      }
+      const local = new Uint8Array(30);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, e.file.size, true);
+      lv.setUint32(22, e.file.size, true);
+      lv.setUint16(26, name.length, true);
+      out.write(local, { at: start });
+      out.write(name, { at: start + 30 });
+      central.push({ name, crc, size: e.file.size, offset: start });
     }
-    lv.setUint32(14, crc, true);
-    out.write(local, { at: 0 });
-    out.write(nameBytes, { at: 30 });
-
-    const central = new Uint8Array(46);
-    const cv = new DataView(central.buffer);
-    cv.setUint32(0, 0x02014b50, true);
-    cv.setUint16(4, 20, true);
-    cv.setUint16(6, 20, true);
-    cv.setUint16(8, 0x0800, true);
-    cv.setUint32(16, crc, true);
-    cv.setUint32(20, file.size, true);
-    cv.setUint32(24, file.size, true);
-    cv.setUint16(28, nameBytes.length, true);
     const cdStart = pos;
-    out.write(central, { at: pos });
-    pos += 46;
-    out.write(nameBytes, { at: pos });
-    pos += nameBytes.length;
-
+    for (const c of central) {
+      const cd = new Uint8Array(46);
+      const cv = new DataView(cd.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint32(16, c.crc, true);
+      cv.setUint32(20, c.size, true);
+      cv.setUint32(24, c.size, true);
+      cv.setUint16(28, c.name.length, true);
+      cv.setUint32(42, c.offset, true);
+      out.write(cd, { at: pos });
+      pos += 46;
+      out.write(c.name, { at: pos });
+      pos += c.name.length;
+    }
     const eocd = new Uint8Array(22);
     const ev = new DataView(eocd.buffer);
     ev.setUint32(0, 0x06054b50, true);
-    ev.setUint16(8, 1, true);
-    ev.setUint16(10, 1, true);
+    ev.setUint16(8, central.length, true);
+    ev.setUint16(10, central.length, true);
     ev.setUint32(12, pos - cdStart, true);
     ev.setUint32(16, cdStart, true);
     out.write(eocd, { at: pos });
@@ -265,7 +276,7 @@ async function extract({ file, id, root, entries, base }) {
 self.onmessage = async (event) => {
   const msg = event.data;
   try {
-    const fn = { copy, rewrite, wrapExe, extract }[msg.op];
+    const fn = { copy, rewrite, pack, extract }[msg.op];
     if (!fn) throw new Error("unknown op " + msg.op);
     const size = await fn(msg);
     postMessage({ type: "done", size });

@@ -1,5 +1,22 @@
 [
   {
+    "date": "2026-10-01 (2)",
+    "items": [
+      "英語表示に対応（右上で切り替え）",
+      "PC でのドラッグ＆ドロップ、フォルダごとの追加、複数ファイルの追加に対応",
+      "デモ（7-Zip）をワンタップで試せるように",
+      ".msi インストーラーに対応（msiexec）、Windows デスクトップを開く機能を追加",
+      "Wine 本体から実行に不要なファイルを除き、初回ダウンロードを軽量化"
+    ],
+    "items_en": [
+      "English UI (switch at top right)",
+      "Drag and drop on computers, adding whole folders and multiple files",
+      "One-tap demo (7-Zip)",
+      ".msi installers (msiexec) and an \"Open Windows desktop\" option",
+      "Smaller first download: files the browser never uses are removed from Wine"
+    ]
+  },
+  {
     "date": "2026-10-01",
     "items": [
       "ボイス・BGM が鳴らない問題への対策：iPhone のマナーモード中も鳴らす設定、Ogg 音声をブラウザが再生できない場合の代替デコード",
@@ -13,6 +30,11 @@
       "600MB級の大きなゲームZIPを追加できるように（少しずつ保存する方式に変更）",
       "Windows で作った日本語ファイル名の ZIP に対応",
       "最初の公開"
+    ],
+    "items_en": [
+      "On-screen keypad, direct play for RPG Maker MV/MZ, MV save import/export, audio fixes for iPhone",
+      "Game engine detection, version display, load progress, large ZIP support, Shift_JIS file names",
+      "First release"
     ]
   }
 ]

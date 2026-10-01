@@ -3,9 +3,22 @@
 (function () {
   "use strict";
 
+  // 言語はランチャーが cookie "exe-lang" に保存したもの
+  const EN = /(?:^|;\s*)exe-lang=en/.test(document.cookie) ||
+    (!/(?:^|;\s*)exe-lang=/.test(document.cookie) && !(navigator.language || "").toLowerCase().startsWith("ja"));
+  const L = EN ? {
+    emu: "Emulator", app: "App", wine: "Wine", failed: "failed", waiting: "waiting", done: "done",
+    booting: "Loaded. Starting Wine (the first start can take a few minutes). Tap to close.",
+    back: "← Back", keys: "Keys", type: "Type", log: "Log", colon: ": ",
+  } : {
+    emu: "エミュレーター", app: "ゲーム", wine: "Wine 本体", failed: "失敗", waiting: "待機中", done: "完了",
+    booting: "読み込み完了。Wine を起動中です（初回は数分かかることがあります）。タップで閉じる",
+    back: "← 戻る", keys: "キー", type: "文字入力", log: "ログ", colon: "：",
+  };
+
   // ---------- 読み込みの進み具合表示 ----------
   // label -> { done, total, finished, waiting }。読み込みは順番に行われるので、予定分を最初から並べておく
-  const loads = new Map(["エミュレーター", "ゲーム", "Wine 本体"].map((l) => [l, { done: 0, total: 0, waiting: true }]));
+  const loads = new Map([L.emu, L.app, L.wine].map((l) => [l, { done: 0, total: 0, waiting: true }]));
   let progressEl = null;
   let hideTimer = null;
 
@@ -28,19 +41,19 @@
       if (!finished) active = true;
       const pct = p.total ? Math.min(100, Math.floor((p.done / p.total) * 100)) : null;
       const text = p.error
-        ? label + "：失敗（" + p.error + "）"
+        ? label + L.colon + L.failed + " (" + p.error + ")"
         : p.waiting
-          ? label + "：待機中"
+          ? label + L.colon + L.waiting
           : finished
-          ? label + "：完了（" + mb(p.done) + " MB）"
-          : label + "：" + (pct === null ? "" : pct + "% ") + "（" + mb(p.done) + (p.total ? " / " + mb(p.total) : "") + " MB）";
+          ? label + L.colon + L.done + " (" + mb(p.done) + " MB)"
+          : label + L.colon + (pct === null ? "" : pct + "% ") + "(" + mb(p.done) + (p.total ? " / " + mb(p.total) : "") + " MB)";
       rows.push(
         '<div class="m-row"><span>' + text.replace(/</g, "&lt;") + "</span>" +
         '<progress max="' + (p.total || 1) + '" value="' + (finished ? p.total || 1 : p.total ? p.done : 0) + '"></progress></div>'
       );
     }
     if (!active) {
-      rows.push('<div class="m-row m-note">読み込み完了。Wine を起動中です（初回は数分かかることがあります）。タップで閉じる</div>');
+      rows.push('<div class="m-row m-note">' + L.booting + "</div>");
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => progressEl.classList.add("m-hidden"), 30000);
     }
@@ -96,15 +109,15 @@
         const root = await navigator.storage.getDirectory();
         const dir = await root.getDirectoryHandle("games");
         const file = await (await dir.getFileHandle(decodeURIComponent(m[1]))).getFile();
-        return track("ゲーム", new Response(file, { headers: { "Content-Type": "application/zip" } }), file.size);
+        return track(L.app, new Response(file, { headers: { "Content-Type": "application/zip" } }), file.size);
       } catch (e) {
         // 見つからなければ従来どおり（Service Worker の Cache）から読む
       }
     }
     const res = await originalFetch(input, init);
-    if (/\/fs\/boxedwine\.zip$/.test(url.pathname)) return track("Wine 本体", res);
-    if (m) return track("ゲーム", res);
-    if (/\.wasm$/.test(url.pathname)) return track("エミュレーター", res);
+    if (/\/fs\/boxedwine\.zip$/.test(url.pathname)) return track(L.wine, res);
+    if (m) return track(L.app, res);
+    if (/\.wasm$/.test(url.pathname)) return track(L.emu, res);
     return res;
   };
 
@@ -161,12 +174,12 @@
     const bar = document.createElement("div");
     bar.id = "m-bar";
     bar.innerHTML =
-      '<a href="../../">← 戻る</a>' +
-      '<button type="button" id="m-toggle-keys">キー</button>' +
-      '<button type="button" id="m-type">文字入力</button>' +
+      '<a href="../../">' + L.back + "</a>" +
+      '<button type="button" id="m-toggle-keys">' + L.keys + "</button>" +
+      '<button type="button" id="m-type">' + L.type + "</button>" +
       '<span class="m-spacer"></span>' +
       '<span id="m-version"></span>' +
-      '<button type="button" id="m-log">ログ</button>';
+      '<button type="button" id="m-log">' + L.log + "</button>";
     document.body.insertBefore(bar, document.body.firstChild);
 
     const keys = document.createElement("div");
