@@ -16,7 +16,7 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 1. PC でゲームのフォルダを ZIP にして、iCloud Drive などで iPhone の「ファイル」に置く
 2. ランチャーで「ファイルを選ぶ」→ ZIP（または単体の .exe）を選ぶ
 3. 起動する EXE を選んで「起動」
-   - 初回は Wine 本体（約170MB）をダウンロードします。Wi-Fi 推奨。以後はブラウザ内にキャッシュ
+   - 初回は Wine 本体をダウンロードします。Wi-Fi 推奨。以後はブラウザ内にキャッシュ
    - タップ＝マウスクリック。下部ボタンでキー入力、「文字入力」で英数字入力
 
 ## 構成
@@ -28,7 +28,7 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 | `site/store-worker.js` | ゲームファイルを少しずつ OPFS へ書き込む Worker（大きなZIP対応・日本語ファイル名の変換）|
 | `site/mobile.js`, `mobile.css` | エミュレーター画面に注入するスマホ用UI（仮想キー等） |
 | `scripts/patch-shell.py` | Boxedwine の Web シェルに上記UIを差し込み、ZIP をメモリ上で複製しないよう改変。ZIP内の時刻をUTCで解釈 |
-| `scripts/fix-update-timestamp.py` | Wine 本体の `.update-timestamp` を上記に合わせ、起動のたびの Wine 設定更新を防ぐ |
+| `scripts/prepare-filesystem.py` | Wine 本体から実行に不要なファイルを除き（上流 Boxedwine の Web 版と同じ規則、`web_runtime_policy.json`）、`.update-timestamp` を上記に合わせる |
 | `.github/workflows/deploy.yml` | Boxedwine（JIT版・互換版）のビルドと Pages への配備 |
 
 ## 制限

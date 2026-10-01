@@ -34,7 +34,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: engine-out
-          key: engine-${{ env.BOXEDWINE_COMMIT }}-${{ env.EMSDK_VERSION }}-${{ hashFiles('scripts/patch-shell.py', '.github/workflows/deploy.yml') }}
+          key: engine-${{ env.BOXEDWINE_COMMIT }}-${{ env.EMSDK_VERSION }}-${{ hashFiles('scripts/patch-shell.py', 'scripts/build-engines.sh') }}
 
       - name: Checkout Boxedwine
         if: steps.engine.outputs.cache-hit != 'true'
@@ -51,26 +51,9 @@ jobs:
           version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: emsdk-cache
 
-      - name: Patch Boxedwine for mobile
-        if: steps.engine.outputs.cache-hit != 'true'
-        working-directory: boxedwine/project/emscripten
-        run: |
-          python3 "$GITHUB_WORKSPACE/scripts/patch-shell.py" .
-          # 新しい emscripten では emcc でのリンク時に libc++ が入らないため em++ でリンクする
-          sed -i 's/^\t@\$(CC) \$(ALL) -o \$@ \$(LDFLAGS)$/\t@$(CXX) $(ALL) -o $@ $(LDFLAGS)/' makefile
-          grep -q '@$(CXX) $(ALL) -o' makefile
-
       - name: Build engines
         if: steps.engine.outputs.cache-hit != 'true'
-        working-directory: boxedwine/project/emscripten
-        run: |
-          make jit
-          make release
-          for pair in jit:Jit compat:Release; do
-            name="${pair%%:*}"; dir="${pair##*:}"
-            mkdir -p "$GITHUB_WORKSPACE/engine-out/$name"
-            cp Build/$dir/boxedwine.{html,js,wasm,css} Build/$dir/boxedwine-shell.js "$GITHUB_WORKSPACE/engine-out/$name/"
-          done
+        run: scripts/build-engines.sh "$GITHUB_WORKSPACE/boxedwine" "$GITHUB_WORKSPACE/engine-out"
 
       - name: Download Wine filesystem
         run: |
@@ -98,11 +81,11 @@ jobs:
               f.write(f"FS_SHA256={sha}\n")
           EOF
 
-      - name: Fix Wine prefix timestamp
+      - name: Prepare Wine filesystem
         run: |
           set -euo pipefail
-          # Boxedwine を ZIP 時刻 UTC 解釈に改変したので、.update-timestamp もそれに合わせる
-          python3 scripts/fix-update-timestamp.py fs-download/boxedwine.zip fs-download/fixed.zip
+          # 実行に不要なファイルを除き（上流の Web 版と同じ規則）、.update-timestamp を UTC 解釈に合わせる
+          python3 scripts/prepare-filesystem.py fs-download/boxedwine.zip fs-download/fixed.zip
           mv fs-download/fixed.zip fs-download/boxedwine.zip
           echo "FS_SHA256=$(sha256sum fs-download/boxedwine.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
@@ -129,7 +112,7 @@ jobs:
           EOF
           cat > _site/engine/BOXEDWINE_VERSION.txt <<EOF
           Boxedwine commit: $BOXEDWINE_COMMIT (https://github.com/danoon2/Boxedwine, GPL-2.0)
-          Filesystem: $FS_URL (.update-timestamp patched) sha256=$FS_SHA256
+          Filesystem: $FS_URL (pruned for web, .update-timestamp patched) sha256=$FS_SHA256
           EOF
           printf '{"build": %s, "sha": "%s", "date": "%s"}\n' \
             "$GITHUB_RUN_NUMBER" "${GITHUB_SHA:0:7}" "$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST')" > _site/version.json
