@@ -355,13 +355,6 @@ function button(key, cls, onClick) {
   return b;
 }
 
-// タイトルから決まる色相（カードのアイコン色）
-function hue(text) {
-  let h = 0;
-  for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 360;
-  return h;
-}
-
 function renderLibrary() {
   const root = $("library");
   const list = loadMeta();
@@ -379,26 +372,16 @@ function renderLibrary() {
 function renderCard(g) {
   const card = document.createElement("div");
   card.className = "card";
-  const head = document.createElement("div");
-  head.className = "card-head";
-  const icon = document.createElement("div");
-  icon.className = "app-icon";
-  icon.textContent = (g.title.trim()[0] || "?").toUpperCase();
-  icon.style.background = "linear-gradient(135deg, hsl(" + hue(g.title) + " 70% 52%), hsl(" + ((hue(g.title) + 40) % 360) + " 75% 48%))";
-  const titles = document.createElement("div");
-  titles.className = "card-titles";
   const title = document.createElement("div");
   title.className = "game-title";
   title.textContent = g.title;
   const meta = document.createElement("div");
   meta.className = "game-meta";
   meta.textContent = (g.size / 1048576).toFixed(1) + " MB";
-  titles.append(title, meta);
-  head.append(icon, titles);
   const kindEl = document.createElement("div");
   const convertBox = document.createElement("div");
   const html5 = g.mode === "html5";
-  card.append(head, kindEl, convertBox);
+  card.append(title, meta, kindEl, convertBox);
 
   const showKind = (k) => {
     kindEl.className = "kind kind-" + k.verdict;

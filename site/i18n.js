@@ -5,11 +5,6 @@
     ja: {
       "app.tagline": "Windows の .exe をインストール不要・ブラウザだけで動かします。ファイルは端末の外に送信されません。",
       "lang.switch": "English",
-      "hero.title1": "Windows のソフトを、",
-      "hero.title2": "ブラウザだけで。",
-      "chip.noinstall": "インストール不要",
-      "chip.private": "ファイルは端末の外に出ない",
-      "chip.devices": "iPhone・Android・Mac・PC",
       "footer.credits": "Wine・Boxedwine・DOSBox（js-dos）・wine64 などのオープンソースで動いています。",
       "footer.source": "ソースコード（GitHub）",
       "version.loading": "バージョン確認中…",
@@ -121,11 +116,6 @@
     en: {
       "app.tagline": "Run Windows .exe files in your browser — nothing to install, and your files never leave your device.",
       "lang.switch": "日本語",
-      "hero.title1": "Windows software,",
-      "hero.title2": "right in your browser.",
-      "chip.noinstall": "Nothing to install",
-      "chip.private": "Files never leave your device",
-      "chip.devices": "iPhone · Android · Mac · PC",
       "footer.credits": "Powered by open source: Wine, Boxedwine, DOSBox (js-dos) and wine64.",
       "footer.source": "Source code (GitHub)",
       "version.loading": "Checking version…",
