@@ -28,7 +28,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # エンジン（Boxedwine）の入力が変わっていなければ、前回のビルド結果を再利用する
+      - name: Restore engine build
+        id: engine
+        uses: actions/cache@v4
+        with:
+          path: engine-out
+          key: engine-${{ env.BOXEDWINE_COMMIT }}-${{ env.EMSDK_VERSION }}-${{ hashFiles('scripts/patch-shell.py', '.github/workflows/deploy.yml') }}
+
       - name: Checkout Boxedwine
+        if: steps.engine.outputs.cache-hit != 'true'
         run: |
           git init boxedwine
           cd boxedwine
@@ -37,11 +46,13 @@ jobs:
           git checkout --quiet FETCH_HEAD
 
       - uses: mymindstorm/setup-emsdk@v14
+        if: steps.engine.outputs.cache-hit != 'true'
         with:
           version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: emsdk-cache
 
       - name: Patch Boxedwine for mobile
+        if: steps.engine.outputs.cache-hit != 'true'
         working-directory: boxedwine/project/emscripten
         run: |
           python3 "$GITHUB_WORKSPACE/scripts/patch-shell.py" .
@@ -50,10 +61,16 @@ jobs:
           grep -q '@$(CXX) $(ALL) -o' makefile
 
       - name: Build engines
+        if: steps.engine.outputs.cache-hit != 'true'
         working-directory: boxedwine/project/emscripten
         run: |
           make jit
           make release
+          for pair in jit:Jit compat:Release; do
+            name="${pair%%:*}"; dir="${pair##*:}"
+            mkdir -p "$GITHUB_WORKSPACE/engine-out/$name"
+            cp Build/$dir/boxedwine.{html,js,wasm,css} Build/$dir/boxedwine-shell.js "$GITHUB_WORKSPACE/engine-out/$name/"
+          done
 
       - name: Download Wine filesystem
         run: |
@@ -95,12 +112,8 @@ jobs:
           rm -rf _site
           cp -r site _site
 
-          for pair in jit:Jit compat:Release; do
-            name="${pair%%:*}"; dir="${pair##*:}"
-            mkdir -p "_site/engine/$name"
-            cp boxedwine/project/emscripten/Build/$dir/boxedwine.{html,js,wasm,css} \
-               boxedwine/project/emscripten/Build/$dir/boxedwine-shell.js "_site/engine/$name/"
-          done
+          mkdir -p _site/engine
+          cp -r engine-out/jit engine-out/compat _site/engine/
 
           # GitHub Pages の 1 ファイル上限を避けるため 45MB ごとに分割（Service Worker が結合する）
           mkdir -p _site/fs
