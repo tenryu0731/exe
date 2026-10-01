@@ -3,6 +3,89 @@
 (function () {
   "use strict";
 
+  // ---------- 読み込みの進み具合表示 ----------
+  // label -> { done, total, finished, waiting }。読み込みは順番に行われるので、予定分を最初から並べておく
+  const loads = new Map(["エミュレーター", "ゲーム", "Wine 本体"].map((l) => [l, { done: 0, total: 0, waiting: true }]));
+  let progressEl = null;
+  let hideTimer = null;
+
+  function renderProgress() {
+    if (!document.body) return;
+    if (!progressEl) {
+      progressEl = document.createElement("div");
+      progressEl.id = "m-progress";
+      progressEl.addEventListener("click", () => progressEl.classList.add("m-hidden"));
+      const bar = document.getElementById("m-bar");
+      if (bar) bar.after(progressEl);
+      else document.body.insertBefore(progressEl, document.body.firstChild);
+    }
+    progressEl.classList.remove("m-hidden");
+    const rows = [];
+    let active = false;
+    for (const [label, p] of loads) {
+      const mb = (n) => (n / 1048576).toFixed(0);
+      const finished = !p.waiting && (p.error || (p.total ? p.done >= p.total : p.finished));
+      if (!finished) active = true;
+      const pct = p.total ? Math.min(100, Math.floor((p.done / p.total) * 100)) : null;
+      const text = p.error
+        ? label + "：失敗（" + p.error + "）"
+        : p.waiting
+          ? label + "：待機中"
+          : finished
+          ? label + "：完了（" + mb(p.done) + " MB）"
+          : label + "：" + (pct === null ? "" : pct + "% ") + "（" + mb(p.done) + (p.total ? " / " + mb(p.total) : "") + " MB）";
+      rows.push(
+        '<div class="m-row"><span>' + text.replace(/</g, "&lt;") + "</span>" +
+        '<progress max="' + (p.total || 1) + '" value="' + (finished ? p.total || 1 : p.total ? p.done : 0) + '"></progress></div>'
+      );
+    }
+    if (!active) {
+      rows.push('<div class="m-row m-note">読み込み完了。Wine を起動中です（初回は数分かかることがあります）。タップで閉じる</div>');
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => progressEl.classList.add("m-hidden"), 30000);
+    }
+    progressEl.innerHTML = rows.join("");
+  }
+
+  // Response の本文を読みながら進み具合を記録する
+  function track(label, response, total) {
+    if (!response.ok || !response.body) return response;
+    const p = { done: 0, total: total || Number(response.headers.get("Content-Length")) || 0, finished: false };
+    loads.set(label, p);
+    renderProgress();
+    let lastDraw = 0;
+    const reader = response.body.getReader();
+    const body = new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            p.finished = true;
+            if (!p.total) p.total = p.done;
+            renderProgress();
+            controller.close();
+            return;
+          }
+          p.done += value.byteLength;
+          const now = Date.now();
+          if (now - lastDraw > 200) {
+            lastDraw = now;
+            renderProgress();
+          }
+          controller.enqueue(value);
+        } catch (e) {
+          p.error = e.message;
+          renderProgress();
+          controller.error(e);
+        }
+      },
+      cancel(reason) {
+        reader.cancel(reason);
+      },
+    });
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  }
+
   // ランチャーが OPFS に保存したゲームZIPを、Boxedwine の fetch("…/games/<id>.zip") に渡す
   const originalFetch = window.fetch.bind(window);
   window.fetch = async function (input, init) {
@@ -13,12 +96,16 @@
         const root = await navigator.storage.getDirectory();
         const dir = await root.getDirectoryHandle("games");
         const file = await (await dir.getFileHandle(decodeURIComponent(m[1]))).getFile();
-        return new Response(file, { headers: { "Content-Type": "application/zip" } });
+        return track("ゲーム", new Response(file, { headers: { "Content-Type": "application/zip" } }), file.size);
       } catch (e) {
         // 見つからなければ従来どおり（Service Worker の Cache）から読む
       }
     }
-    return originalFetch(input, init);
+    const res = await originalFetch(input, init);
+    if (/\/fs\/boxedwine\.zip$/.test(url.pathname)) return track("Wine 本体", res);
+    if (m) return track("ゲーム", res);
+    if (/\.wasm$/.test(url.pathname)) return track("エミュレーター", res);
+    return res;
   };
 
   // [表示名, KeyboardEvent.key, KeyboardEvent.code, keyCode, ラッチ式(修飾キー)]

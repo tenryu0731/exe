@@ -189,6 +189,14 @@ $("prefetch").addEventListener("click", () => {
 });
 navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", (e) => {
   if (!e.data) return;
+  if (e.data.type === "fs-progress") {
+    const bar = $("engine-progress");
+    bar.max = e.data.total || 1;
+    bar.value = e.data.done;
+    $("engine-status").textContent = "ダウンロード中… " + Math.floor((e.data.done / (e.data.total || 1)) * 100) + "%（" +
+      (e.data.done / 1048576).toFixed(0) + " / " + (e.data.total / 1048576).toFixed(0) + " MB）";
+    return;
+  }
   $("engine-progress").hidden = true;
   $("prefetch").disabled = false;
   if (e.data.type === "fs-ready") refreshEngineStatus();

@@ -70,3 +70,17 @@ div.emscripten_border { border-color: var(--m-border); }
   height: 10px;
   opacity: 0;
 }
+
+#m-progress {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  background: var(--m-panel);
+  border-bottom: 1px solid var(--m-border);
+  color: var(--m-text);
+  font: 13px/1.4 system-ui, -apple-system, "Hiragino Sans", sans-serif;
+}
+#m-progress.m-hidden { display: none; }
+#m-progress .m-row { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+#m-progress .m-row span { flex: 1 1 auto; min-width: 0; }
+#m-progress progress { flex: 0 0 35%; height: 10px; accent-color: var(--m-key-active); }
+#m-progress .m-note { color: #c9d6e3; }

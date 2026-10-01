@@ -31,9 +31,47 @@ async function serveGame(request) {
   return new Response("game not found", { status: 404 });
 }
 
-let fsPromise = null;
+// 分割ファイルを順に取得して 1 本のストリームとして流す（受け取り側で進み具合を表示できる）
+function partsStream(manifest) {
+  let index = 0;
+  let reader = null;
+  let total = 0;
+  return new ReadableStream({
+    async pull(controller) {
+      for (;;) {
+        if (!reader) {
+          if (index >= manifest.parts.length) {
+            if (total !== manifest.size) controller.error(new Error("size mismatch " + total));
+            else controller.close();
+            return;
+          }
+          const part = manifest.parts[index++];
+          const res = await fetch(new URL("fs/" + part, self.registration.scope).href);
+          if (!res.ok) {
+            controller.error(new Error("part " + part + " " + res.status));
+            return;
+          }
+          reader = res.body.getReader();
+        }
+        const { done, value } = await reader.read();
+        if (done) {
+          reader = null;
+          continue;
+        }
+        total += value.byteLength;
+        controller.enqueue(value);
+        return;
+      }
+    },
+    cancel() {
+      if (reader) reader.cancel();
+    },
+  });
+}
 
-async function assembleFilesystem() {
+let filling = null;
+
+async function serveFilesystem() {
   const manifestUrl = new URL("fs/parts.json", self.registration.scope).href;
   const manifest = await (await fetch(manifestUrl, { cache: "no-cache" })).json();
   const cacheName = FS_CACHE_PREFIX + manifest.sha256.slice(0, 16);
@@ -47,29 +85,17 @@ async function assembleFilesystem() {
     if (name.startsWith(FS_CACHE_PREFIX) && name !== cacheName) await caches.delete(name);
   }
 
-  const blobs = [];
-  for (const part of manifest.parts) {
-    const res = await fetch(new URL("fs/" + part, self.registration.scope).href);
-    if (!res.ok) throw new Error("part " + part + " " + res.status);
-    blobs.push(await res.blob());
-  }
-  const blob = new Blob(blobs, { type: "application/zip" });
-  if (blob.size !== manifest.size) throw new Error("size mismatch " + blob.size);
-  await cache.put(
-    key,
-    new Response(blob, { headers: { "Content-Type": "application/zip", "Content-Length": String(blob.size) } })
-  );
-  return cache.match(key);
-}
-
-async function serveFilesystem() {
-  if (!fsPromise) {
-    fsPromise = assembleFilesystem().finally(() => {
-      fsPromise = null;
+  const headers = { "Content-Type": "application/zip", "Content-Length": String(manifest.size) };
+  const stream = partsStream(manifest);
+  if (filling) return new Response(stream, { headers }); // キャッシュ書き込みは進行中の 1 本に任せる
+  const [forClient, forCache] = stream.tee();
+  filling = cache
+    .put(key, new Response(forCache, { headers }))
+    .catch(() => {})
+    .finally(() => {
+      filling = null;
     });
-  }
-  const res = await fsPromise;
-  return res.clone();
+  return new Response(forClient, { headers });
 }
 
 self.addEventListener("fetch", (event) => {
@@ -93,12 +119,31 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(fetch(event.request).then(withIsolation));
 });
 
-self.addEventListener("message", (event) => {
-  if (event.data === "prefetch-fs") {
-    event.waitUntil(
-      serveFilesystem()
-        .then(() => event.source && event.source.postMessage({ type: "fs-ready" }))
-        .catch((e) => event.source && event.source.postMessage({ type: "fs-error", message: e.message }))
-    );
+// ランチャーの「事前ダウンロード」：最後まで読み切ってキャッシュさせ、進み具合を返す
+async function prefetch(client) {
+  const post = (msg) => client && client.postMessage(msg);
+  try {
+    const res = await serveFilesystem();
+    const total = Number(res.headers.get("Content-Length")) || 0;
+    const reader = res.body.getReader();
+    let done = 0;
+    let last = 0;
+    for (;;) {
+      const r = await reader.read();
+      if (r.done) break;
+      done += r.value.byteLength;
+      if (done - last >= 2 * 1048576) {
+        last = done;
+        post({ type: "fs-progress", done, total });
+      }
+    }
+    if (filling) await filling;
+    post({ type: "fs-ready" });
+  } catch (e) {
+    post({ type: "fs-error", message: e.message });
   }
+}
+
+self.addEventListener("message", (event) => {
+  if (event.data === "prefetch-fs") event.waitUntil(prefetch(event.source));
 });
