@@ -1,0 +1,37 @@
+name: Mirror Wine filesystem
+
+# 開発環境から boxedwine.org に直接つながらないため、配信用に整えたファイルシステムを
+# 分割して fs-mirror ブランチに置く（手動実行のみ。サイトの配信には使わない）。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FS_URL: https://boxedwine.org/v2/11/TinyCore15Wine11.0.zip
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and prepare
+        run: |
+          set -euo pipefail
+          mkdir -p fs-download
+          curl -fSL --retry 5 -o fs-download/boxedwine.zip "$FS_URL"
+          python3 scripts/prepare-filesystem.py fs-download/boxedwine.zip fs-download/fixed.zip
+          mkdir mirror
+          split -b 45M -d -a 3 fs-download/fixed.zip mirror/boxedwine.zip.
+          sha256sum fs-download/fixed.zip | tee mirror/SHA256
+      - name: Push to fs-mirror
+        run: |
+          set -euo pipefail
+          cd mirror
+          git init -q -b fs-mirror
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -qm "Wine filesystem mirror"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" fs-mirror
