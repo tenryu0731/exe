@@ -46,8 +46,7 @@
       return setStatus(L.unsupported, true);
     }
     setStatus(L.reading);
-    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("games");
-    const file = await (await dir.getFileHandle(id + ".zip")).getFile();
+    const file = await loadGameFile(id);
     const index = await readZipIndex(file);
     const staged = [];
     for (const e of index.entries) {

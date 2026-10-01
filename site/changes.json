@@ -8,7 +8,8 @@
       "Windows 3.1 用（16bit）の exe が DOS 扱いになる問題を修正",
       "区切りに「\\」を使った ZIP、4GB 超・6.5 万ファイル超の ZIP（ZIP64）に対応",
       "起動する exe の自動選択を改善（クラッシュ報告用・再配布ランタイムなどを後ろに）",
-      "非対応の圧縮方式・RAR/7z・.NET 製・RTP が必要なツクール作品を、追加時や起動前に知らせるように"
+      "非対応の圧縮方式・RAR/7z・.NET 製・RTP が必要なツクール作品を、追加時や起動前に知らせるように",
+      "ブラウザ内のファイル保存（OPFS）が使えない環境（プライベートブラウズ等）でも、別の保存先に切り替えて追加・起動できるように"
     ],
     "items_en": [
       "Fixed Japanese text showing as boxes (a Japanese font is now included)",
@@ -17,7 +18,8 @@
       "16-bit Windows 3.1 programs were treated as DOS; fixed",
       "Support ZIPs that use backslashes and ZIP64 archives (over 4 GB or 65,535 files)",
       "Better choice of which exe to start (crash reporters and redistributables go last)",
-      "Warn about unsupported compression, RAR/7z, .NET programs and RPG Maker games that need the RTP"
+      "Warn about unsupported compression, RAR/7z, .NET programs and RPG Maker games that need the RTP",
+      "Apps can now be added and started even where the browser's file storage (OPFS) is unavailable, such as private browsing"
     ]
   },
   {

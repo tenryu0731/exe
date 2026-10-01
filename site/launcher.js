@@ -163,9 +163,8 @@ async function removeGameFile(id) {
   } catch (e) {}
 }
 
-async function gameFile(id) {
-  const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("games");
-  return (await dir.getFileHandle(id + ".zip")).getFile();
+function gameFile(id) {
+  return loadGameFile(id);
 }
 
 // RPGツクールMV/MZ をブラウザで直接遊べる形式（Cache Storage）に展開する
@@ -254,7 +253,7 @@ async function addItems(items, title) {
   buttons.forEach((b) => (b.disabled = true));
   const id = safeId(title);
   try {
-    if (!navigator.storage || !navigator.storage.getDirectory) throw new Error(t("err.opfs"));
+    if (!window.caches && !(navigator.storage && navigator.storage.getDirectory)) throw new Error(t("err.opfs"));
     const single = items.length === 1 ? items[0].file : null;
     let targets, msg, kind, label, names = [];
     const arc = single && /\.(rar|7z|lzh|lha|cab|tar|gz|tgz|xz)$/i.exec(single.name);

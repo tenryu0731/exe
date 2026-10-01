@@ -182,6 +182,20 @@ async function exeArch(file, entry) {
   return (await exeInfo(file, entry)).arch;
 }
 
+// 追加済みのゲーム ZIP を開く。OPFS になければ Cache Storage（OPFS が使えないブラウザでの保存先）から
+async function loadGameFile(id) {
+  try {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("games");
+    return await (await dir.getFileHandle(id + ".zip")).getFile();
+  } catch (e) {
+    const cache = await caches.open("exe-games-v1");
+    const res = await cache.match(new URL("games/" + id + ".zip", location.href).href);
+    if (!res) throw e;
+    return res.blob();
+  }
+}
+
+window.loadGameFile = loadGameFile;
 window.sliceBytes = sliceBytes;
 window.readZipIndex = readZipIndex;
 window.zipEntryBytes = zipEntryBytes;

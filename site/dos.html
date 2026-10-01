@@ -71,8 +71,7 @@
     const params = new URLSearchParams(location.search);
     const exe = params.get("exe") || "";
     status(L.reading);
-    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("games");
-    const file = await (await dir.getFileHandle(params.get("id") + ".zip")).getFile();
+    const file = await loadGameFile(params.get("id"));
     const index = await readZipIndex(file);
     const init = [];
     for (const e of index.entries) if (!e.dir) init.push({ path: e.name, contents: await zipEntryBytes(file, e) });

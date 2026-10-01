@@ -1,4 +1,4 @@
-// ゲームファイルを OPFS（ブラウザ内ファイル領域）へ少しずつ書き込む Worker。
+// ゲームファイルを OPFS（ブラウザ内ファイル領域。使えなければ Cache Storage）へ少しずつ書き込む Worker。
 // ファイル全体をメモリに載せないので、数百MBのZIPでも追加できる。
 //
 // メッセージ:
@@ -12,13 +12,54 @@
 
 const CHUNK = 8 * 1024 * 1024;
 
+// OPFS（同期書き込み）が使えないブラウザ（プライベートブラウズや一部の WebKit）では、書き込む中身を
+// Blob の部品として覚えておき、最後に Cache Storage（キー games/<id>.zip）へ 1 本の ZIP として保存する。
+// 元ファイルの範囲は File.slice() のまま持つので、ZIP 全体をメモリに載せない
+class CacheTarget {
+  constructor(id) {
+    this.id = id;
+    this.parts = [];
+    this.size = 0;
+    this.lazy = true;
+  }
+  write(data, { at }) {
+    this.parts.push({ at, data, len: data.size !== undefined ? data.size : data.byteLength });
+  }
+  truncate(n) { this.size = n; }
+  flush() {}
+  close() {}
+  async commit() {
+    const parts = this.parts.slice().sort((a, b) => a.at - b.at);
+    const blobs = [];
+    let pos = 0;
+    for (const p of parts) {
+      if (p.at !== pos) throw new Error("internal: gap in archive at " + pos);
+      blobs.push(p.data);
+      pos += p.len;
+    }
+    if (this.size && pos !== this.size) throw new Error("internal: size " + pos + " / " + this.size);
+    const blob = new Blob(blobs, { type: "application/zip" });
+    const cache = await caches.open("exe-games-v1");
+    await cache.put(new URL("games/" + this.id + ".zip", self.location.href).href,
+      new Response(blob, { headers: { "Content-Type": "application/zip", "Content-Length": String(blob.size) } }));
+  }
+}
+
+let pendingCommit = null;
+
 async function openTarget(id) {
-  const root = await navigator.storage.getDirectory();
-  const dir = await root.getDirectoryHandle("games", { create: true });
-  const handle = await dir.getFileHandle(id + ".zip", { create: true });
-  const access = await handle.createSyncAccessHandle();
-  access.truncate(0);
-  return access;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle("games", { create: true });
+    const handle = await dir.getFileHandle(id + ".zip", { create: true });
+    const access = await handle.createSyncAccessHandle();
+    access.truncate(0);
+    return access;
+  } catch (e) {
+    const target = new CacheTarget(id);
+    pendingCommit = target;
+    return target;
+  }
 }
 
 async function readBytes(file, start, end) {
@@ -31,6 +72,11 @@ function progress(done, total) {
 
 // file[start, end) を out の pos へ書き写す
 async function copyRange(file, start, end, out, pos, report) {
+  if (out.lazy) {
+    out.write(file.slice(start, end), { at: pos });
+    report(end);
+    return pos + (end - start);
+  }
   for (let p = start; p < end; p += CHUNK) {
     const bytes = await readBytes(file, p, Math.min(end, p + CHUNK));
     out.write(bytes, { at: pos });
@@ -152,7 +198,7 @@ async function pack({ id, entries }) {
       for (let p = 0; p < e.file.size; p += CHUNK) {
         const bytes = await readBytes(e.file, p, Math.min(e.file.size, p + CHUNK));
         crc = crc32(crc, bytes);
-        out.write(bytes, { at: pos });
+        out.write(out.lazy ? e.file.slice(p, p + bytes.length) : bytes, { at: pos });
         pos += bytes.length;
         done += bytes.length;
         progress(done, total);
@@ -278,7 +324,9 @@ self.onmessage = async (event) => {
   try {
     const fn = { copy, rewrite, pack, extract }[msg.op];
     if (!fn) throw new Error("unknown op " + msg.op);
+    pendingCommit = null;
     const size = await fn(msg);
+    if (pendingCommit) await pendingCommit.commit();
     postMessage({ type: "done", size });
   } catch (e) {
     postMessage({ type: "error", message: (e && e.name ? e.name + ": " : "") + (e && e.message ? e.message : String(e)) });
