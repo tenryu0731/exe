@@ -6,6 +6,7 @@ import fs from "fs";
 
 const BASE = process.argv[2] || "http://localhost:8765/exe/";
 const results = [];
+const storageOk = {};
 
 function storedZip(entries) {
   // 無圧縮 ZIP（CRC32 付き）
@@ -196,7 +197,7 @@ async function testMv(browserType, label) {
 async function launcherShot(browserType, label) {
   const { browser, page } = await newPage(browserType, label);
   // 診断：Cache Storage に各種の本文を保存して読み戻せるか
-  console.log(label, "cache test:", await page.evaluate(async () => {
+  const diag = await page.evaluate(async () => {
     const c = await caches.open("diag");
     const out = [];
     const file = new File([new Uint8Array(3000).fill(7)], "x.bin");
@@ -213,7 +214,11 @@ async function launcherShot(browserType, label) {
     out.push("keys=" + (await c.keys()).length);
     await caches.delete("diag");
     return out.join(" ");
-  }).catch((e) => "err " + e.message));
+  }).catch((e) => "err " + e.message);
+  console.log(label, "cache test:", diag);
+  // CI の Linux 版 WebKit は OPFS も Cache Storage も実質使えない（保存しても読み戻せない）。
+  // iPhone の Safari はどちらも使えるので、この環境では保存が要る確認を飛ばす
+  storageOk[label] = /string=5/.test(diag);
   await shot(page, label + "-launcher");
   await browser.close();
 }
@@ -222,9 +227,13 @@ const wanted = (process.env.E2E_BROWSERS || "webkit,chromium").split(",");
 for (const [type, label] of [[webkit, "webkit"], [chromium, "chromium"]].filter(([, l]) => wanted.includes(l))) {
   for (const [name, test] of [["launcher", launcherShot], ["MV", testMv], ["DOS", testDos], ["wine demo", testWineDemo], ["probe", testProbe]]) {
     // 1 つの失敗で残りの確認を止めない
+    if (name !== "launcher" && storageOk[label] === false) {
+      results.push([label + " " + name, null, "skipped: this browser build has no working Cache Storage / OPFS"]);
+      continue;
+    }
     try { await test(type, label); } catch (e) { results.push([label + " " + name, false, "setup: " + e.message.split("\n")[0]]); }
   }
 }
 
 console.log("\n==== E2E RESULTS ====");
-for (const r of results) console.log((r[1] ? "PASS" : "FAIL") + "  " + r[0] + "  " + (r.slice(2).join("  ")));
+for (const r of results) console.log((r[1] === null ? "SKIP" : r[1] ? "PASS" : "FAIL") + "  " + r[0] + "  " + (r.slice(2).join("  ")));
