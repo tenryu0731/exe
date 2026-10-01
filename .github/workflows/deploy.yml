@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p fs-download
-          curl -fSL --retry 5 -o fs-download/boxedwine.zip "$FS_URL"
+          curl -fSL --connect-timeout 30 --max-time 600 --retry 5 --retry-all-errors --retry-delay 10 -o fs-download/boxedwine.zip "$FS_URL"
           python3 - <<'EOF'
           import hashlib, os, sys, zipfile
           path = "fs-download/boxedwine.zip"
