@@ -76,9 +76,19 @@ async function newPage(browserType, label) {
   const logs = [];
   page.on("console", (m) => logs.push(m.text().slice(0, 300)));
   page.on("pageerror", (e) => logs.push("PAGEERROR " + e.message));
-  await page.goto(BASE);
-  await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 30000 });
-  await page.reload();
+  // Service Worker が制御を始めたあとで読み直す（WebKit では読み直しが取り消されることがあるので数回試す）
+  for (let i = 0; ; i++) {
+    try {
+      await page.goto(BASE);
+      await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 30000 });
+      await page.goto(BASE);
+      await page.waitForSelector("#pick", { timeout: 30000 });
+      break;
+    } catch (e) {
+      if (i >= 2) throw e;
+      await page.waitForTimeout(2000);
+    }
+  }
   await page.waitForTimeout(1000);
   return { browser, page, logs, label };
 }
@@ -178,11 +188,10 @@ async function launcherShot(browserType, label) {
 
 const wanted = (process.env.E2E_BROWSERS || "webkit,chromium").split(",");
 for (const [type, label] of [[webkit, "webkit"], [chromium, "chromium"]].filter(([, l]) => wanted.includes(l))) {
-  await launcherShot(type, label);
-  await testMv(type, label);
-  await testDos(type, label);
-  await testWineDemo(type, label);
-  await testProbe(type, label);
+  for (const [name, test] of [["launcher", launcherShot], ["MV", testMv], ["DOS", testDos], ["wine demo", testWineDemo], ["probe", testProbe]]) {
+    // 1 つの失敗で残りの確認を止めない
+    try { await test(type, label); } catch (e) { results.push([label + " " + name, false, "setup: " + e.message.split("\n")[0]]); }
+  }
 }
 
 console.log("\n==== E2E RESULTS ====");
