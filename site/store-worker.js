@@ -39,13 +39,24 @@ class CacheTarget {
     }
     if (this.size && pos !== this.size) throw new Error("internal: size " + pos + " / " + this.size);
     const blob = new Blob(blobs, { type: "application/zip" });
-    const cache = await caches.open("exe-games-v1");
-    await cache.put(new URL("games/" + this.id + ".zip", self.location.href).href,
-      new Response(blob, { headers: { "Content-Type": "application/zip", "Content-Length": String(blob.size) } }));
+    await cachePut("exe-games-v1", new URL("games/" + this.id + ".zip", self.location.href).href, blob,
+      { "Content-Type": "application/zip", "Content-Length": String(blob.size) });
   }
 }
 
 let pendingCommit = null;
+
+// Cache Storage への保存はページ側に頼む（WebKit では Worker から書いた Cache がページや
+// Service Worker から見えないことがあるため）。Blob はコピーせず参照のまま渡る
+const cacheAcks = new Map();
+let cacheSeq = 0;
+function cachePut(cacheName, url, blob, headers) {
+  const n = ++cacheSeq;
+  return new Promise((resolve, reject) => {
+    cacheAcks.set(n, { resolve, reject });
+    postMessage({ type: "cache-put", n, cache: cacheName, url, blob, headers });
+  });
+}
 
 async function openTarget(id) {
   try {
@@ -280,7 +291,6 @@ async function inflateRaw(blob) {
 }
 
 async function extract({ file, id, root, entries, base }) {
-  const cache = await caches.open(HTML5_CACHE);
   const targets = entries.filter((e) => !e.dir && e.name.startsWith(root) && e.name.length > root.length);
   const total = targets.reduce((a, e) => a + e.compSize, 0) || 1;
   const index = {};
@@ -299,9 +309,7 @@ async function extract({ file, id, root, entries, base }) {
     else if (e.method === 8) body = await inflateRaw(raw);
     else throw new Error("未対応の圧縮形式です（" + e.method + "）: " + e.name);
     const rel = e.name.slice(root.length).normalize("NFC");
-    await cache.put(canonUrl(base, id, rel), new Response(body, {
-      headers: { "Content-Type": mimeOf(rel), "Content-Length": String(body.size) },
-    }));
+    await cachePut(HTML5_CACHE, canonUrl(base, id, rel), body, { "Content-Type": mimeOf(rel), "Content-Length": String(body.size) });
     index[rel.toLowerCase()] = rel;
     written += body.size;
     done += e.compSize;
@@ -314,13 +322,19 @@ async function extract({ file, id, root, entries, base }) {
   }
   await Promise.all([lane(), lane(), lane(), lane()]);
 
-  await cache.put(base + "play/" + encodeURIComponent(id) + "/.exe-index.json",
-    new Response(JSON.stringify(index), { headers: { "Content-Type": "application/json" } }));
+  await cachePut(HTML5_CACHE, base + "play/" + encodeURIComponent(id) + "/.exe-index.json",
+    new Blob([JSON.stringify(index)]), { "Content-Type": "application/json" });
   return written;
 }
 
 self.onmessage = async (event) => {
   const msg = event.data;
+  if (msg && msg.type === "cache-ack") {
+    const p = cacheAcks.get(msg.n);
+    cacheAcks.delete(msg.n);
+    if (p) msg.error ? p.reject(new Error(msg.error)) : p.resolve();
+    return;
+  }
   try {
     const fn = { copy, rewrite, pack, extract }[msg.op];
     if (!fn) throw new Error("unknown op " + msg.op);

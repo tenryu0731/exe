@@ -129,7 +129,12 @@ function runWorker(msg, onProgress) {
     w.onmessage = (e) => {
       const d = e.data;
       if (d.type === "progress") onProgress(d.done, d.total);
-      else if (d.type === "done") { w.terminate(); resolve(d.size); }
+      else if (d.type === "cache-put") {
+        caches.open(d.cache)
+          .then((c) => c.put(d.url, new Response(d.blob, { headers: d.headers })))
+          .then(() => w.postMessage({ type: "cache-ack", n: d.n }),
+            (err) => w.postMessage({ type: "cache-ack", n: d.n, error: (err && err.message) || String(err) }));
+      } else if (d.type === "done") { w.terminate(); resolve(d.size); }
       else if (d.type === "error") { w.terminate(); reject(new Error(d.message)); }
     };
     w.onerror = (e) => { w.terminate(); reject(new Error(e.message || "worker error")); };

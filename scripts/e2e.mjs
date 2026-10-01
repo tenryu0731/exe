@@ -103,6 +103,12 @@ async function newPage(browserType, label) {
 async function addFile(page, path) {
   await page.setInputFiles("#picker", path);
   await page.waitForFunction(() => /Added|Could not/.test(document.querySelector("#add-status").textContent), null, { timeout: 60000 });
+  // 診断：保存先の中身
+  console.log("add:", await page.textContent("#add-status"), "| caches:", await page.evaluate(async () => {
+    const out = [];
+    for (const n of await caches.keys()) out.push(n + "=" + (await (await caches.open(n)).keys()).length);
+    return out.join(",");
+  }).catch((e) => "err " + e.message));
   return page.textContent("#add-status");
 }
 
