@@ -1,6 +1,6 @@
 // EXE Launcher service worker
 //  - games/<name>.zip : ランチャーが Cache Storage に保存したゲームZIPを返す
-//  - fs/boxedwine.zip : 分割配信された Wine ファイルシステムを結合して返す（初回のみDL、以後キャッシュ）
+//  - fs/boxedwine.zip : 分割配信された Wine ファイルシステムを結合して返す（分割ファイルごとに保存し、中断しても続きから取得）
 //  - 同一オリジンの応答に COOP/COEP を付与し cross-origin isolation を有効化（AudioWorklet 用）
 
 const GAME_CACHE = "exe-games-v1";
@@ -41,98 +41,119 @@ async function serveGame(request) {
   return new Response("game not found", { status: 404 });
 }
 
-// 分割ファイルを順に取得して 1 本のストリームとして流す（受け取り側で進み具合を表示できる）。
-// 通信が途中で切れたら、その分割ファイルの受け取り済みの位置から Range 指定で取り直す（最大 3 回）
-function partsStream(manifest) {
-  let index = 0;
-  let reader = null;
-  let partName = null;
-  let partGot = 0;
-  let retries = 0;
-  let resume = false;
-  let total = 0;
+// Wine ファイルシステムは 45MB ごとの分割ファイルで配信する。分割ファイルは取得できたものから 1 つずつ
+// Cache Storage に保存するので、途中で失敗・中断しても次回は続きから取得する（最初からやり直さない）。
+// 通信が切れたら受け取り済みの位置から Range 指定で取り直す（1 ファイルあたり最大 6 回）。
+const PART_SIZE = 45 * 1048576;
+const COMPLETE_KEY = "fs/complete";
+const partJobs = new Map(); // 取得中の分割ファイル → Promise<Blob>（同時要求で二重に取得しない）
 
-  async function openPart(from) {
-    const headers = from > 0 ? { Range: "bytes=" + from + "-" } : {};
-    const res = await fetch(new URL("fs/" + partName, self.registration.scope).href, { headers, cache: "no-store" });
-    if (from > 0 && res.status !== 206) throw new Error("part " + partName + " range " + res.status);
-    if (!res.ok) throw new Error("part " + partName + " " + res.status);
-    reader = res.body.getReader();
-  }
-
-  return new ReadableStream({
-    async pull(controller) {
-      for (;;) {
-        try {
-          if (resume) {
-            await openPart(partGot);
-            resume = false;
-          }
-          if (!reader) {
-            if (index >= manifest.parts.length) {
-              if (total !== manifest.size) controller.error(new Error("size mismatch " + total));
-              else controller.close();
-              return;
-            }
-            partName = manifest.parts[index++];
-            partGot = 0;
-            retries = 0;
-            await openPart(0);
-          }
-          const { done, value } = await reader.read();
-          if (done) {
-            reader = null;
-            continue;
-          }
-          partGot += value.byteLength;
-          total += value.byteLength;
-          controller.enqueue(value);
-          return;
-        } catch (e) {
-          if (!partName || retries >= 3) {
-            controller.error(e);
-            return;
-          }
-          retries++;
-          reader = null;
-          resume = true;
-          await new Promise((r) => setTimeout(r, 1000 * retries));
-        }
-      }
-    },
-    cancel() {
-      if (reader) reader.cancel();
-    },
-  });
-}
-
-let filling = null;
-
-async function serveFilesystem() {
-  const manifestUrl = new URL("fs/parts.json", self.registration.scope).href;
-  const manifest = await (await fetch(manifestUrl, { cache: "no-cache" })).json();
+async function fsManifest() {
+  const manifest = await (await fetch(new URL("fs/parts.json", self.registration.scope).href, { cache: "no-cache" })).json();
   const cacheName = FS_CACHE_PREFIX + manifest.sha256.slice(0, 16);
-  const key = new URL("fs/boxedwine.zip", self.registration.scope).href;
-  const cache = await caches.open(cacheName);
-  const hit = await cache.match(key);
-  if (hit) return hit;
-
-  // 古い版のファイルシステムキャッシュを削除
   for (const name of await caches.keys()) {
     if (name.startsWith(FS_CACHE_PREFIX) && name !== cacheName) await caches.delete(name);
   }
+  return { manifest, cache: await caches.open(cacheName) };
+}
 
+function partUrl(name) {
+  return new URL("fs/" + name, self.registration.scope).href;
+}
+
+function expectedPartSize(manifest, i) {
+  return i < manifest.parts.length - 1 ? PART_SIZE : manifest.size - PART_SIZE * (manifest.parts.length - 1);
+}
+
+// 分割ファイルを 1 つ取得して保存する。受け取った断片は onChunk で順に渡す
+async function downloadPart(cache, manifest, i, onChunk) {
+  const name = manifest.parts[i];
+  const want = expectedPartSize(manifest, i);
+  const chunks = [];
+  let got = 0;
+  let tries = 0;
+  while (got < want) {
+    try {
+      const res = await fetch(partUrl(name), { headers: got ? { Range: "bytes=" + got + "-" } : {}, cache: "no-store" });
+      if (!res.ok) throw new Error("part " + name + " " + res.status);
+      let skip = got && res.status !== 206 ? got : 0; // Range が無視されたら受け取り済みの分を読み飛ばす
+      const reader = res.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        let v = value;
+        if (skip) {
+          if (v.byteLength <= skip) { skip -= v.byteLength; continue; }
+          v = v.subarray(skip);
+          skip = 0;
+        }
+        chunks.push(v);
+        got += v.byteLength;
+        if (onChunk) onChunk(v);
+      }
+      if (got !== want) throw new Error("part " + name + " size " + got + " / " + want);
+    } catch (e) {
+      if (got > want || ++tries > 6) throw e;
+      await new Promise((r) => setTimeout(r, Math.min(15000, 1000 * 2 ** tries)));
+    }
+  }
+  const blob = new Blob(chunks);
+  await cache.put(partUrl(name), new Response(blob, { headers: { "Content-Length": String(want) } }));
+  return blob;
+}
+
+async function cachedPart(cache, manifest, i) {
+  const hit = await cache.match(partUrl(manifest.parts[i]));
+  if (!hit) return null;
+  const blob = await hit.blob();
+  return blob.size === expectedPartSize(manifest, i) ? blob : null;
+}
+
+async function serveFilesystem() {
+  const { manifest, cache } = await fsManifest();
   const headers = { "Content-Type": "application/zip", "Content-Length": String(manifest.size) };
-  const stream = partsStream(manifest);
-  if (filling) return new Response(stream, { headers }); // キャッシュ書き込みは進行中の 1 本に任せる
-  const [forClient, forCache] = stream.tee();
-  filling = cache
-    .put(key, new Response(forCache, { headers }))
-    .catch(() => {})
-    .finally(() => {
-      filling = null;
-    });
-  return new Response(forClient, { headers });
+  const scope = self.registration.scope;
+  // 以前の版が丸ごと保存したもの
+  const whole = await cache.match(scope + "fs/boxedwine.zip");
+  if (whole) return whole;
+  if (await cache.match(scope + COMPLETE_KEY)) {
+    const blobs = [];
+    for (let i = 0; i < manifest.parts.length; i++) blobs.push(await cachedPart(cache, manifest, i));
+    if (blobs.every(Boolean)) return new Response(new Blob(blobs, { type: "application/zip" }), { headers });
+    await cache.delete(scope + COMPLETE_KEY);
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for (let i = 0; i < manifest.parts.length; i++) {
+          let blob = await cachedPart(cache, manifest, i);
+          if (!blob) {
+            const name = manifest.parts[i];
+            if (partJobs.has(name)) {
+              blob = await partJobs.get(name);
+            } else {
+              const job = downloadPart(cache, manifest, i, (v) => controller.enqueue(v));
+              partJobs.set(name, job);
+              try { await job; } finally { partJobs.delete(name); }
+              continue; // 断片は受け取りながら渡し済み
+            }
+          }
+          const reader = blob.stream().getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
+        }
+        await cache.put(scope + COMPLETE_KEY, new Response("ok"));
+        controller.close();
+      } catch (e) {
+        controller.error(e);
+      }
+    },
+  });
+  return new Response(stream, { headers });
 }
 
 // ---------- HTML5 ゲーム（RPGツクールMV/MZ）の配信 ----------
@@ -270,7 +291,6 @@ async function prefetch(client) {
         post({ type: "fs-progress", done, total });
       }
     }
-    if (filling) await filling;
     post({ type: "fs-ready" });
   } catch (e) {
     post({ type: "fs-error", message: e.message });

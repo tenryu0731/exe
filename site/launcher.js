@@ -50,6 +50,7 @@ async function fsCached() {
     if (name.startsWith("exe-fs-")) {
       const c = await caches.open(name);
       if (await c.match(new URL("fs/boxedwine.zip", location.href).href)) return true;
+      if (await c.match(new URL("fs/complete", location.href).href)) return true;
     }
   }
   return false;

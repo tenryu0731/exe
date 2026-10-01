@@ -1,5 +1,18 @@
 [
   {
+    "date": "2026-10-02",
+    "items": [
+      "Wine のダウンロードを 45MB ごとに保存するように。途中で止まっても、次は続きから再開（最初からやり直さない）",
+      "Wine のダウンロード中に二重に取得したり、保存処理で遅くなったりする問題を修正",
+      "ランチャーの見た目を簡素な道具らしいデザインに変更"
+    ],
+    "items_en": [
+      "The Wine download is now saved in 45 MB pieces; if it stops, it continues from where it left off",
+      "Fixed slow downloads caused by writing the cache while streaming",
+      "Simpler, plain launcher layout"
+    ]
+  },
+  {
     "date": "2026-10-01 (3)",
     "items": [
       "ランチャーのデザインを一新",
