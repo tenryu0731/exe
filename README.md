@@ -27,7 +27,8 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 | `site/sw.js` | Service Worker。ゲームZIPの配信、分割した Wine ファイルシステムの結合とキャッシュ、COOP/COEP 付与 |
 | `site/store-worker.js` | ゲームファイルを少しずつ OPFS へ書き込む Worker（大きなZIP対応・日本語ファイル名の変換）|
 | `site/mobile.js`, `mobile.css` | エミュレーター画面に注入するスマホ用UI（仮想キー等） |
-| `scripts/patch-shell.py` | Boxedwine の Web シェルに上記UIを差し込み、ZIP をメモリ上で複製しないよう改変 |
+| `scripts/patch-shell.py` | Boxedwine の Web シェルに上記UIを差し込み、ZIP をメモリ上で複製しないよう改変。ZIP内の時刻をUTCで解釈 |
+| `scripts/fix-update-timestamp.py` | Wine 本体の `.update-timestamp` を上記に合わせ、起動のたびの Wine 設定更新を防ぐ |
 | `.github/workflows/deploy.yml` | Boxedwine（JIT版・互換版）のビルドと Pages への配備 |
 
 ## 制限
