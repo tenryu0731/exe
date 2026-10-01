@@ -575,8 +575,174 @@ function renderLibrary() {
     });
     row.append(play, del);
     card.appendChild(row);
+    if (html5) card.appendChild(saveControls(g));
     root.appendChild(card);
   }
+}
+
+// ---------- セーブデータ（RPGツクールMV）の取り込み・書き出し ----------
+// MV はブラウザで動くとき localStorage の "RPG File<n>" / "RPG Global" / "RPG Config" にセーブする。
+// 値は PC 版の .rpgsave ファイルの中身（LZString.compressToBase64 した JSON）と同じ。
+// ゲーム側の localStorage は "exe:<id>:" で名前空間を分けている（sw.js の injectIntoIndex）。
+function saveNs(id) { return "exe:" + id + ":"; }
+
+function mvSaveKey(path) {
+  const base = path.split("/").pop().toLowerCase();
+  const m = /^file(\d+)\.rpgsave$/.exec(base);
+  if (m) return "RPG File" + Number(m[1]);
+  if (base === "global.rpgsave") return "RPG Global";
+  if (base === "config.rpgsave") return "RPG Config";
+  return null;
+}
+
+async function zipEntryBytes(file, e) {
+  const head = new DataView(await file.slice(e.localOffset, e.localOffset + 30).arrayBuffer());
+  const start = e.localOffset + 30 + head.getUint16(26, true) + head.getUint16(28, true);
+  let blob = file.slice(start, start + e.compSize);
+  if (e.method === 8) blob = await new Response(blob.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
+  else if (e.method !== 0) throw new Error("未対応の圧縮形式です: " + e.name);
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+async function collectSaves(files) {
+  const found = [];
+  for (const f of files) {
+    if (/\.zip$/i.test(f.name)) {
+      const idx = await readZipIndex(f);
+      for (const e of idx.entries) {
+        const key = !e.dir && mvSaveKey(e.name);
+        if (key) found.push({ key, name: e.name.split("/").pop(), text: new TextDecoder().decode(await zipEntryBytes(f, e)).trim() });
+      }
+    } else {
+      const key = mvSaveKey(f.name);
+      if (key) found.push({ key, name: f.name, text: (await f.text()).trim() });
+    }
+  }
+  if (found.some((x) => /\.rmmzsave$/i.test(x.name))) throw new Error("RPGツクールMZ のセーブには未対応です");
+  return found;
+}
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// 無圧縮 ZIP を作る（ファイル名は UTF-8）
+function makeZip(items) {
+  const enc = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const it of items) {
+    const name = enc.encode(it.name);
+    const data = it.bytes;
+    const crc = crc32(data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
+    local.setUint32(14, crc, true); local.setUint32(18, data.length, true); local.setUint32(22, data.length, true);
+    local.setUint16(26, name.length, true);
+    const cd = new DataView(new ArrayBuffer(46));
+    cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true);
+    cd.setUint32(16, crc, true); cd.setUint32(20, data.length, true); cd.setUint32(24, data.length, true);
+    cd.setUint16(28, name.length, true); cd.setUint32(42, offset, true);
+    parts.push(local.buffer, name, data);
+    central.push(cd.buffer, name);
+    offset += 30 + name.length + data.length;
+  }
+  const cdSize = central.reduce((a, b) => a + b.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, items.length, true); end.setUint16(10, items.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
+}
+
+function saveControls(g) {
+  const box = document.createElement("div");
+  box.style.marginTop = "8px";
+  const row = document.createElement("div");
+  row.className = "row";
+  const input = document.createElement("input");
+  input.type = "file"; input.multiple = true; input.hidden = true;
+  input.accept = ".zip,.rpgsave,application/zip,application/octet-stream";
+  const imp = document.createElement("button");
+  imp.className = "grow"; imp.textContent = "セーブを取り込む";
+  const exp = document.createElement("button");
+  exp.className = "grow"; exp.textContent = "セーブを書き出す";
+  const st = document.createElement("p");
+  st.className = "status";
+  const ns = saveNs(g.id);
+  const current = () => {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(ns + "RPG ")) keys.push(k.slice(ns.length));
+    }
+    return keys.sort();
+  };
+  const showCount = () => {
+    const files = current().filter((k) => /^RPG File/.test(k)).length;
+    st.className = "status";
+    st.textContent = files ? "このゲームのセーブ: " + files + " 個" : "このゲームのセーブはまだありません";
+  };
+  imp.addEventListener("click", () => input.click());
+  input.addEventListener("change", async () => {
+    const files = [...input.files];
+    input.value = "";
+    if (!files.length) return;
+    try {
+      const saves = await collectSaves(files);
+      if (!saves.length) throw new Error("RPGツクールMV のセーブ（file1.rpgsave など）が見つかりません");
+      const overwrite = saves.filter((x) => localStorage.getItem(ns + x.key) !== null).map((x) => x.name);
+      if (overwrite.length && !confirm("次のセーブを上書きします。よろしいですか？\n" + overwrite.join("\n"))) return;
+      for (const x of saves) localStorage.setItem(ns + x.key, x.text);
+      showCount();
+      st.className = "status ok";
+      st.textContent = "取り込みました: " + saves.map((x) => x.name).join(", ");
+    } catch (err) {
+      st.className = "status err";
+      st.textContent = "取り込めませんでした: " + err.message;
+    }
+  });
+  exp.addEventListener("click", async () => {
+    const keys = current();
+    if (!keys.length) { st.className = "status err"; st.textContent = "書き出すセーブがありません"; return; }
+    const enc = new TextEncoder();
+    const items = keys.map((k) => {
+      const name = k === "RPG Global" ? "global.rpgsave" : k === "RPG Config" ? "config.rpgsave" : "file" + k.replace("RPG File", "") + ".rpgsave";
+      return { name: "save/" + name, bytes: enc.encode(localStorage.getItem(ns + k)) };
+    });
+    const zip = makeZip(items);
+    const fileName = g.title + " save.zip";
+    const file = new File([zip], fileName, { type: "application/zip" });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: fileName });
+        return;
+      }
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(zip);
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  });
+  row.append(imp, exp);
+  box.append(row, st, input);
+  showCount();
+  return box;
 }
 
 // ---------- 起動 ----------
