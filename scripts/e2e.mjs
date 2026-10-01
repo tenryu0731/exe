@@ -70,9 +70,13 @@ async function canvasStats(page) {
 }
 
 async function newPage(browserType, label) {
-  const browser = await browserType.launch(process.env.E2E_CHROMIUM && browserType === chromium ? { executablePath: process.env.E2E_CHROMIUM } : {});
-  const ctx = await browser.newContext({ ...devices["iPhone 13"], locale: "en-US", ...(browserType === chromium ? { isMobile: false, hasTouch: true } : {}) });
-  const page = await ctx.newPage();
+  // 一時プロファイルの WebKit は OPFS（ファイル保存）を使えないので、毎回新しい保存先つきのプロファイルで開く
+  const dir = fs.mkdtempSync("/tmp/e2e-profile-");
+  const browser = await browserType.launchPersistentContext(dir, {
+    ...(process.env.E2E_CHROMIUM && browserType === chromium ? { executablePath: process.env.E2E_CHROMIUM } : {}),
+    ...devices["iPhone 13"], locale: "en-US", ...(browserType === chromium ? { isMobile: false, hasTouch: true } : {}),
+  });
+  const page = browser.pages()[0] || await browser.newPage();
   const logs = [];
   page.on("console", (m) => logs.push(m.text().slice(0, 300)));
   page.on("pageerror", (e) => logs.push("PAGEERROR " + e.message));
@@ -90,6 +94,9 @@ async function newPage(browserType, label) {
     }
   }
   await page.waitForTimeout(1000);
+  console.log(label, "OPFS:", await page.evaluate(async () => {
+    try { await navigator.storage.getDirectory(); return "ok"; } catch (e) { return "no: " + e.message; }
+  }));
   return { browser, page, logs, label };
 }
 
