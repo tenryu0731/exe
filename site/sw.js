@@ -140,7 +140,7 @@ function injectIntoIndex(html, id) {
     "s.getItem=function(k){return g.call(this,p+k)};" +
     "s.setItem=function(k,v){return t.call(this,p+k,v)};" +
     "s.removeItem=function(k){return r.call(this,p+k)};" +
-    "})();</script><script src=\"../../play-pad.js\"></script>";
+    "})();</script><script src=\"../../play-audio.js\"></script><script src=\"../../play-pad.js\"></script>";
   return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + tag) : tag + html;
 }
 
