@@ -1,5 +1,18 @@
 [
   {
+    "date": "2026-10-02 (3)",
+    "items": [
+      "Wine で動かすソフト全般のセーブに対応：ソフトが作成・変更したファイルを、まとめて ZIP で書き出したり 1 つずつ保存したりできるように",
+      "セーブの取り込みに対応：書き出した ZIP はそのまま元の場所へ、ばらのセーブファイルや他の ZIP は選んだフォルダへ（ソフトが作った save フォルダなども選べます）",
+      "フォルダや exe 単体で追加したソフトでも同じように使えます"
+    ],
+    "items_en": [
+      "Saves for any software run with Wine: export every file it created or changed as a ZIP, or save files one by one",
+      "Import saves: an exported ZIP goes back to where it was; loose save files or other ZIPs go into a folder you choose (including folders the software created, such as save)",
+      "Works the same for apps added as a folder or a single exe"
+    ]
+  },
+  {
     "date": "2026-10-02 (2)",
     "items": [
       "日本語のゲーム・アプリで文字が □ になる問題を修正（日本語フォントを同梱）",

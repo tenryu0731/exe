@@ -488,6 +488,7 @@ function renderCard(g) {
     hint.textContent = t("lib.desktopHint");
     adv.append(desk, hint);
     card.appendChild(adv);
+    card.appendChild(wineSaveControls(g));
     row.appendChild(play);
   }
   row.appendChild(button("lib.delete", "danger", async () => {
@@ -611,6 +612,162 @@ function makeZip(items) {
   return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
 }
 
+// ファイルを端末に渡す（iPhone は共有シートで「ファイルに保存」など、それ以外はダウンロード）
+async function offerFile(blob, fileName) {
+  const file = new File([blob], fileName, { type: blob.type || "application/octet-stream" });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: fileName });
+      return;
+    }
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file);
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+// Wine で動かすソフトのセーブ：ソフトが作成・変更したファイルをまとめて（または 1 つずつ）書き出し、取り込む
+function wineSaveControls(g) {
+  const W = window.WineSaves;
+  const box = document.createElement("details");
+  const sum = document.createElement("summary");
+  sum.textContent = t("ws.title");
+  const st = document.createElement("p");
+  st.className = "status";
+  const list = document.createElement("div");
+  list.className = "ws-list";
+  const input = document.createElement("input");
+  input.type = "file"; input.multiple = true; input.hidden = true;
+  const gameDir = (rel) => W.DRIVE_C + "/files/" + rel;
+  let files = [];
+
+  // 取り込み先（ばらのファイル・他の ZIP の場合）：ゲーム内のフォルダから選ぶ。既定は exe のフォルダ、
+  // その下に save / savedata などがあればそこ
+  const destLabel = document.createElement("label");
+  destLabel.className = "field";
+  destLabel.textContent = t("ws.dest");
+  const dest = document.createElement("select");
+  destLabel.appendChild(dest);
+  const exeDir = (g.exe || "").includes("/") ? g.exe.slice(0, g.exe.lastIndexOf("/")) : "";
+  const fillDest = async () => {
+    const dirs = new Set([exeDir]);
+    try {
+      const idx = await readZipIndex(await gameFile(g.id));
+      for (const e of idx.entries) {
+        const parts = e.name.split("/");
+        for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+      }
+    } catch (e) {}
+    // ソフトが実行中に作ったフォルダ（save など）も候補にする
+    for (const f of files) {
+      if (!f.name.startsWith("C/files/")) continue;
+      const parts = f.name.slice(8).split("/");
+      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+    }
+    const keep = dest.value;
+    const sorted = [...dirs].filter((d) => d === "" || !/(^|\/)__MACOSX(\/|$)/.test(d)).sort();
+    dest.innerHTML = "";
+    for (const d of sorted) {
+      const o = document.createElement("option");
+      o.value = d;
+      o.textContent = d === "" ? t("ws.destRoot") : d + "/";
+      dest.appendChild(o);
+    }
+    const saveDir = sorted.find((d) => d.startsWith(exeDir) && /(^|\/)(save|savedata|saves)$/i.test(d));
+    dest.value = keep && dirs.has(keep) ? keep : saveDir !== undefined ? saveDir : exeDir;
+  };
+
+  const refresh = async () => {
+    try {
+      files = await W.changedFiles(g.id);
+    } catch (err) {
+      st.className = "status err";
+      st.textContent = t("ws.readFailed", { msg: err.message });
+      return;
+    }
+    const inGame = files.filter((f) => f.name.startsWith("C/files/")).length;
+    st.className = "status";
+    st.textContent = files.length ? t("ws.count", { n: files.length, game: inGame }) : t("ws.none");
+    list.innerHTML = "";
+    for (const f of files) {
+      const b = document.createElement("button");
+      b.className = "ws-file";
+      b.textContent = f.name.replace(/^C\/files\//, "") + "  (" + (f.size < 1024 ? f.size + " B" : Math.ceil(f.size / 1024) + " KB") + ")";
+      b.title = t("ws.downloadOne");
+      b.addEventListener("click", async () => {
+        const [one] = await W.readFiles(g.id, [f]);
+        await offerFile(new Blob([one.bytes]), f.name.split("/").pop());
+      });
+      list.appendChild(b);
+    }
+  };
+
+  const exportAll = async () => {
+    await refresh();
+    if (!files.length) { st.className = "status err"; st.textContent = t("ws.nothing"); return; }
+    const items = await W.readFiles(g.id, files);
+    await offerFile(makeZip(items), g.title + " files.zip");
+  };
+
+  input.addEventListener("change", async () => {
+    const picked = [...input.files];
+    input.value = "";
+    if (!picked.length) return;
+    try {
+      const out = [];
+      const loose = [];
+      for (const file of picked) {
+        if (/\.zip$/i.test(file.name)) {
+          const idx = await readZipIndex(file);
+          const entries = idx.entries.filter((e) => !e.dir && !isJunkPath(e.name));
+          const ours = entries.length && entries.every((e) => W.importKey(e.name));
+          for (const e of entries) {
+            const bytes = await zipEntryBytes(file, e);
+            if (ours) out.push(Object.assign({ bytes, label: e.name }, W.importKey(e.name)));
+            else loose.push({ rel: e.name, bytes });
+          }
+        } else {
+          loose.push({ rel: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+        }
+      }
+      const base = dest.value ? dest.value + "/" : "";
+      for (const f of loose) out.push({ drive: "c", rel: gameDir(base + f.rel), bytes: f.bytes, label: base + f.rel });
+      if (!out.length) throw new Error(t("ws.empty"));
+      const shown = out.slice(0, 12).map((f) => f.label).join("\n") + (out.length > 12 ? "\n…" : "");
+      if (!confirm(t("ws.confirm", { n: out.length, names: shown }))) return;
+      await W.writeFiles(g.id, out);
+      st.className = "status ok";
+      st.textContent = t("ws.imported", { n: out.length });
+      await refresh();
+      await fillDest();
+      st.className = "status ok";
+      st.textContent = t("ws.imported", { n: out.length });
+    } catch (err) {
+      st.className = "status err";
+      st.textContent = t("ws.importFailed", { msg: err.message });
+    }
+  });
+
+  const row = document.createElement("div");
+  row.className = "row";
+  row.style.marginTop = "8px";
+  row.append(button("ws.export", "grow", exportAll), button("ws.import", "grow", () => input.click()));
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = t("ws.hint");
+  box.append(sum, st, row, destLabel, hint, list, input);
+  let loaded = false;
+  box.addEventListener("toggle", () => {
+    if (box.open && !loaded) { loaded = true; refresh().then(fillDest); }
+  });
+  return box;
+}
+
 function saveControls(g) {
   const box = document.createElement("div");
   box.style.marginTop = "8px";
@@ -661,23 +818,7 @@ function saveControls(g) {
       const name = k === "RPG Global" ? "global.rpgsave" : k === "RPG Config" ? "config.rpgsave" : "file" + k.replace("RPG File", "") + ".rpgsave";
       return { name: "save/" + name, bytes: enc.encode(localStorage.getItem(ns + k)) };
     });
-    const zip = makeZip(items);
-    const fileName = g.title + " save.zip";
-    const file = new File([zip], fileName, { type: "application/zip" });
-    try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: fileName });
-        return;
-      }
-    } catch (err) {
-      if (err && err.name === "AbortError") return;
-    }
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(zip);
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    await offerFile(makeZip(items), g.title + " save.zip");
   };
   row.append(button("save.import", "grow", () => input.click()), button("save.export", "grow", exp));
   box.append(row, st, input);
