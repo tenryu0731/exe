@@ -79,6 +79,8 @@
   .game-title { font-weight: 600; word-break: break-all; }
   .game-meta { font-size: 13px; color: var(--muted); }
   .note { background: var(--warn-bg); color: var(--warn-text); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+  #version { font-size: 13px; }
+  #changes h3 { font-size: 14px; margin: 10px 0 2px; }
   details summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-top: 8px; }
   ul.help { padding-left: 20px; margin: 6px 0; font-size: 14px; }
   .empty { color: var(--muted); font-size: 14px; }
@@ -87,7 +89,7 @@
 </head>
 <body>
   <h1>EXE Launcher</h1>
-  <p class="sub">Windows のゲーム（.exe）をブラウザ内の Wine（Boxedwine）で動かします。</p>
+  <p class="sub">Windows のゲーム（.exe）をブラウザ内の Wine（Boxedwine）で動かします。<br><span id="version">バージョン確認中…</span></p>
 
   <div class="card">
     <h2>ゲームを追加</h2>
@@ -124,6 +126,11 @@
       <li>セーブデータはこのブラウザ内（ゲームごと）に保存されます。Safari の履歴・サイトデータを消すと消えます。</li>
       <li>動かないときは「互換エンジン」、解像度 640x480、色数 16bit などを試してください。</li>
     </ul>
+  </details>
+
+  <details id="changes-box">
+    <summary>更新履歴</summary>
+    <div id="changes"></div>
   </details>
 
 <script>
@@ -459,9 +466,36 @@ function launch(g) {
   location.href = "engine/" + engine + "/boxedwine.html?" + params.join("&");
 }
 
+// ---------- バージョン・更新履歴 ----------
+async function showVersion() {
+  try {
+    const v = await (await fetch("version.json", { cache: "no-store" })).json();
+    $("version").textContent = "バージョン: #" + v.build + "（" + v.sha + "）" + v.date;
+  } catch (e) {
+    $("version").textContent = "バージョン: 開発版";
+  }
+  try {
+    const list = await (await fetch("changes.json", { cache: "no-store" })).json();
+    const root = $("changes");
+    for (const entry of list) {
+      const h = document.createElement("h3");
+      h.textContent = entry.date;
+      const ul = document.createElement("ul");
+      ul.className = "help";
+      for (const item of entry.items) {
+        const li = document.createElement("li");
+        li.textContent = item;
+        ul.appendChild(li);
+      }
+      root.append(h, ul);
+    }
+  } catch (e) {}
+}
+
 // ---------- 初期化 ----------
 (async () => {
   renderLibrary();
+  showVersion();
   try {
     await ensureServiceWorker();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});

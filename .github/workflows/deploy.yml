@@ -118,6 +118,9 @@ jobs:
           Boxedwine commit: $BOXEDWINE_COMMIT (https://github.com/danoon2/Boxedwine, GPL-2.0)
           Filesystem: $FS_URL (.update-timestamp patched) sha256=$FS_SHA256
           EOF
+          printf '{"build": %s, "sha": "%s", "date": "%s"}\n' \
+            "$GITHUB_RUN_NUMBER" "${GITHUB_SHA:0:7}" "$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST')" > _site/version.json
+          cat _site/version.json
           touch _site/.nojekyll
           du -sh _site; ls -la _site _site/engine/* _site/fs
 

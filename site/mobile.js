@@ -165,6 +165,7 @@
       '<button type="button" id="m-toggle-keys">キー</button>' +
       '<button type="button" id="m-type">文字入力</button>' +
       '<span class="m-spacer"></span>' +
+      '<span id="m-version"></span>' +
       '<button type="button" id="m-log">ログ</button>';
     document.body.insertBefore(bar, document.body.firstChild);
 
@@ -230,6 +231,11 @@
         send("keyup", e.key, code, kc);
       }
     });
+
+    fetch("../../version.json", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((v) => { document.getElementById("m-version").textContent = "#" + v.build; })
+      .catch(() => {});
 
     document.getElementById("m-toggle-keys").addEventListener("click", () => {
       keys.classList.toggle("m-hidden");
