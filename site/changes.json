@@ -1,5 +1,18 @@
 [
   {
+    "date": "2026-10-02 (6)",
+    "items": [
+      "よく使うキーの編集画面を作り直し：「✎ 編集」から、ドラッグで並べ替え・× で外す・全キーを押して追加",
+      "キーの大きさを 小・中・大 から選べるように",
+      "編集中はキーがゲームに送られないように"
+    ],
+    "items_en": [
+      "Redesigned quick-key editing: from \"✎ Edit\", drag to reorder, × to remove, tap keys on the full keyboard to add",
+      "Choose the key size (S, M, L)",
+      "Keys are not sent to the game while editing"
+    ]
+  },
+  {
     "date": "2026-10-02 (5)",
     "items": [
       "画面のキーボードを強化：「全キー」で PC のキーボード一式（F1〜F12・英数字・記号・Ins/Del/Home/End/PgUp/PgDn・テンキー）",
