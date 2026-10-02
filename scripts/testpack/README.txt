@@ -9,9 +9,9 @@ EXE Launcher テスト用セット / test pack
 04_Console/Hello.exe      黒い窓で名前を聞かれ、入力すると「Hello, 名前! It works.」と返す
                           （日本語モードでは文字の間が広く表示される。Wine の仕様）。
 05_Batch/start.bat        黒い窓に「If you can read this, .bat files work.」と出る。
-06_64bit/Hello64.exe      「64-bit OK」と出る（試験的な 64bit 用エンジン。PC の Chrome・Edge・Firefox のみで、
-                          数分かかるか起動しないこともある。iPhone では「このブラウザでは動かせません」と
-                          出るのが正しい動き）。
+06_64bit/Hello64.exe      「64-bit OK」と出る（試験的な 64bit 用エンジン。PC・Android の Chrome・Edge・Firefox
+                          向けで、数分かかるか起動しないこともある。iPhone・iPad ではブラウザによらず
+                          「まだ 64bit のソフトを動かせません」と出るのが正しい動き）。
 07_DOS/HELLO.COM          DOS の画面に「HELLO FROM DOS」と出て、キーを押すと終わる。
 
 すべてこのランチャーのために書いた小さなプログラムです（scripts/testpack にソースあり）。

@@ -4,11 +4,13 @@
 "use strict";
 (function () {
   const L = (window.I18N && window.I18N.lang === "en") ? {
-    back: "← Back", noid: "No app specified.", unsupported: "This browser cannot run the 64-bit engine (it needs WebAssembly Memory64 and SharedArrayBuffer). Try desktop Chrome, Edge or Firefox.",
+    back: "← Back", noid: "No app specified.", unsupported: "This browser cannot run the 64-bit engine (it needs WebAssembly Memory64 and SharedArrayBuffer). Try Chrome, Edge or Firefox on a computer or Android.",
+      unsupportedIos: "64-bit programs cannot run on iPhone or iPad yet: every browser there (Safari, Chrome, Edge, Firefox) uses Apple's WebKit, which does not support WebAssembly Memory64 yet. It is in Safari Technology Preview, so it should become possible after a future iOS update. Try a computer or an Android phone, or a 32-bit version of the program.",
     reading: "Reading the app…", booting: "Starting wine64… The first start downloads about {mb} MB and can take several minutes.",
     staging: "Copying {n} files into wine64…", running: "Running {name} (64-bit)", failed: "Failed: {msg}",
   } : {
-    back: "← 戻る", noid: "起動するアプリが指定されていません。", unsupported: "このブラウザでは 64bit エンジンを動かせません（WebAssembly Memory64 と SharedArrayBuffer が必要です）。PC の Chrome・Edge・Firefox でお試しください。",
+    back: "← 戻る", noid: "起動するアプリが指定されていません。", unsupported: "このブラウザでは 64bit エンジンを動かせません（WebAssembly Memory64 と SharedArrayBuffer が必要です）。PC か Android の Chrome・Edge・Firefox でお試しください。",
+      unsupportedIos: "iPhone・iPad では、まだ 64bit のソフトを動かせません。iPhone・iPad のブラウザは Safari・Chrome・Edge・Firefox のどれも Apple の WebKit で動いていて、WebKit が WebAssembly Memory64 にまだ対応していないためです（Safari の開発版には入ったので、今後の iOS の更新で使えるようになる見込みです）。PC か Android で開くか、32bit 版のソフトをお使いください。",
     reading: "アプリを読み込み中…", booting: "wine64 を起動中… 初回は約 {mb} MB をダウンロードするため数分かかります。",
     staging: "{n} 個のファイルを wine64 に渡しています…", running: "{name} を実行中（64bit）", failed: "失敗しました: {msg}",
   };
@@ -43,7 +45,9 @@
   async function main() {
     if (!id) return setStatus(L.noid, true);
     if (!memory64Supported() || typeof SharedArrayBuffer === "undefined" || !window.crossOriginIsolated) {
-      return setStatus(L.unsupported, true);
+      // iPhone・iPad（iPadOS はデスクトップ版を名乗るのでタッチ対応の Mac 表記も含める）はブラウザによらず WebKit
+      const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+      return setStatus(ios ? L.unsupportedIos : L.unsupported, true);
     }
     setStatus(L.reading);
     const file = await loadGameFile(id);
