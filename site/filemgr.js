@@ -263,6 +263,22 @@
   const backendFor = (g, gameFile, html5, T) => (g.mode === "html5" ? html5Backend(g, html5, T) : wineBackend(g, gameFile, T));
 
   // ゲームを今の状態のまま（元のファイル＋変更）まるごと ZIP にする。戻り値 { blob, users（_users に入れた数） }
+  const USERS_README = [
+    "このフォルダには、ゲームがゲームフォルダの外（Windows の C:\\Users\\<ユーザー名>\\ 以下。AppData・ドキュメントなど）に書いたファイルが入っています。",
+    "セーブや設定が含まれている場合があります。一時ファイルなど不要なものが混ざることもあります。",
+    "",
+    "Windows で続きを遊ぶ場合: username フォルダの中身（AppData など）を、C:\\Users\\<あなたのユーザー名>\\ の同じ場所に移してください。",
+    "例: _users\\username\\AppData\\Roaming\\Game → C:\\Users\\<あなたのユーザー名>\\AppData\\Roaming\\Game",
+    "（AppData は隠しフォルダです。エクスプローラーのアドレス欄に %APPDATA% と入力すると開けます）",
+    "このランチャーにゲームを追加し直した場合は、📂 ファイル →「ユーザーデータ」に同じ構成で入れてください。",
+    "",
+    "This folder holds files the game wrote outside its own folder (under C:\\Users\\<user>\\ on Windows: AppData, Documents, etc.).",
+    "They may include saves and settings, and possibly temporary files you do not need.",
+    "To continue on Windows, move the contents of the username folder to the same place under C:\\Users\\<your user name>\\.",
+    "Example: _users\\username\\AppData\\Roaming\\Game -> C:\\Users\\<your user name>\\AppData\\Roaming\\Game (type %APPDATA% in the Explorer address bar to open AppData\\Roaming).",
+    "",
+  ].join("\n");
+
   async function downloadAll(g, { gameFile, html5 }, onProgress) {
     const B = backendFor(g, gameFile, html5, L());
     const { items } = await B.load();
@@ -274,6 +290,8 @@
       if (path.startsWith("_users/")) users++;
       list.push(await B.zipItem(it, path));
     }
+    // _users の使い方を ZIP の中にも残す（Windows で続きを遊ぶときは、中身を自分のユーザーフォルダに移す必要がある）
+    if (users) list.push({ name: "_users/README.txt", bytes: new TextEncoder().encode("\uFEFF" + USERS_README.replace(/\n/g, "\r\n")) });
     return { blob: await buildZip(list, onProgress), users };
   }
 

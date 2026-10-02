@@ -3,11 +3,13 @@
     "date": "2026-10-02 (12)",
     "items": [
       "「セーブデータ」欄（変更分だけの ZIP 保存・復元）を廃止し、カードに「⤓ 全部ダウンロード」を追加。元のファイルに変更・セーブを重ねた今の状態のゲームを、まるごと ZIP で保存します（ゲームフォルダ外に書かれたファイルは _users、ツクール MV のセーブは save フォルダ）",
-      "大きなゲームでもメモリに載せずに ZIP を作るように（元のファイルは圧縮されたまま写す）"
+      "大きなゲームでもメモリに載せずに ZIP を作るように（元のファイルは圧縮されたまま写す）",
+      "全部ダウンロードで _users フォルダができたときは、Windows で使う場合の移し先を画面に表示し、ZIP 内にも _users/README.txt を入れるように"
     ],
     "items_en": [
       "Replaced the Save data section (changed-files-only ZIP and restore) with \"⤓ Download all\" on each card. It saves the whole game in its current state (original files plus changes and saves) as one ZIP (files written outside the game folder go to _users, RPG Maker MV saves to save/)",
-      "ZIP creation no longer loads the whole game into memory (original files are copied still compressed)"
+      "ZIP creation no longer loads the whole game into memory (original files are copied still compressed)",
+      "When Download all creates a _users folder, the page explains where to move it on Windows, and the ZIP includes _users/README.txt"
     ]
   },
   {
