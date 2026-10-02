@@ -13,7 +13,6 @@
   const JA = {
     title: "{title} のファイル", close: "閉じる", up: "上へ", changedOnly: "変更分のみ表示",
     rootGame: "ゲームのフォルダ", rootUser: "ユーザーデータ（AppData・ドキュメント）", rootOther: "Windows 設定（レジストリなど）", showOther: "Windows 設定も表示",
-    rootSave: "セーブデータ",
     stOrig: "元のまま", stChanged: "変更あり", stNew: "新しく作成",
     addHere: "ファイルを追加", addFolderHere: "フォルダを追加", newFolder: "新規フォルダ", zipFolder: "ZIP で保存", top: "トップ",
     save: "端末に保存", replace: "別のファイルで置き換え", revert: "変更を取り消す", remove: "削除",
@@ -23,19 +22,17 @@
     confirmAdd: "{n} 個のファイルをこのフォルダに追加します（同名のファイルは上書きされます）。",
     done: "完了しました。次回の起動から反映されます。", failed: "失敗しました: {msg}",
     note: "変更はブラウザ内に保存されます。追加したゲームの元ファイルは変更されません。",
-    noteHtml5: "変更はそのまま反映され、元に戻せません。セーブはブラウザ内（localStorage）に保存されています。",
+    noteHtml5: "変更はそのまま反映され、元に戻せません。ツクール MV のセーブ（.rpgsave）は、PC 版と同じく save フォルダに置くと使われます。",
     more: "操作", open: "開く", replaceDir: "フォルダを選んで置き換え", replaceZip: "ZIP を選んで置き換え", removeDir: "フォルダを削除", revertDir: "フォルダの変更を取り消す",
     confirmReplaceDir: "「{name}」の中身を、選んだ {n} 個のファイルで置き換えますか？\n選んだ中にないファイルは削除されます。",
     confirmRemoveDir: "「{name}」と中のファイルを削除しますか？（元に戻せません）",
     confirmRevertDir: "「{name}」の中の変更をすべて取り消して、元の状態に戻しますか？",
     leftOrig: "完了しました。元からあった {n} 個のファイルは残しています（ゲームの元ファイルは消せません）。",
-    badSave: "セーブデータとして扱えないファイルです: {name}（ツクール MV は file1.rpgsave・global.rpgsave・config.rpgsave）",
     items: "{n} 項目", path: "場所",
   };
   const EN = {
     title: "Files of {title}", close: "Close", up: "Up", changedOnly: "Show changed only",
     rootGame: "Game folder", rootUser: "User data (AppData, Documents)", rootOther: "Windows settings (registry etc.)", showOther: "Show Windows settings",
-    rootSave: "Save data",
     stOrig: "original", stChanged: "changed", stNew: "new",
     addHere: "Add files", addFolderHere: "Add folder", newFolder: "New folder", zipFolder: "Save as ZIP", top: "Top",
     save: "Save to device", replace: "Replace with another file", revert: "Undo changes", remove: "Delete",
@@ -45,13 +42,12 @@
     confirmAdd: "Add {n} files to this folder (files with the same name are overwritten)?",
     done: "Done. Takes effect on the next run.", failed: "Failed: {msg}",
     note: "Changes are stored in the browser. The original game files are not modified.",
-    noteHtml5: "Changes apply directly and cannot be undone. Saves are stored in the browser (localStorage).",
+    noteHtml5: "Changes apply directly and cannot be undone. RPG Maker MV saves (.rpgsave) are used when placed in the save folder, as on PC.",
     more: "Actions", open: "Open", replaceDir: "Replace with a folder", replaceZip: "Replace with a ZIP", removeDir: "Delete folder", revertDir: "Undo changes in folder",
     confirmReplaceDir: "Replace the contents of \"{name}\" with the {n} chosen files?\nFiles not in your selection are deleted.",
     confirmRemoveDir: "Delete \"{name}\" and its files? (This cannot be undone.)",
     confirmRevertDir: "Undo all changes in \"{name}\" and restore the original state?",
     leftOrig: "Done. {n} original files were kept (original game files cannot be deleted).",
-    badSave: "Not usable as save data: {name} (RPG Maker MV uses file1.rpgsave, global.rpgsave, config.rpgsave)",
     items: "{n} items", path: "Location",
   };
   const fmt = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m));
@@ -166,7 +162,9 @@
   }
 
   // ---------- ブラウザで直接動くゲーム（RPGツクールMV/MZ など） ----------
-  // ファイルは Cache Storage の play/<id>/<パス>（一覧は .exe-index.json）、セーブは localStorage の "exe:<id>:<キー>"
+  // ファイルは Cache Storage の play/<id>/<パス>（一覧は .exe-index.json）、セーブは localStorage の "exe:<id>:<キー>"。
+  // ブラウザで動く MV は save/*.rpgsave を読まずに localStorage を使うので、PC 版と同じ場所（ゲームのフォルダの save/）に
+  // localStorage のセーブを見せ、そこへの書き込みは localStorage に入れる
   const MIME = {
     html: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8",
     css: "text/css; charset=utf-8", txt: "text/plain; charset=utf-8", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
@@ -192,6 +190,9 @@
       const k = n.replace(/%2F/g, "/");
       return localStorage.getItem(ns + k) !== null ? k : null; // それ以外は、既にあるキーの置き換えだけ
     };
+    // ゲームのフォルダ内のパス → localStorage のキー（セーブでなければ null）
+    const saveKeyOf = (rel) => { const m = /^save\/([^/]+)$/i.exec(rel); return m ? nameToKey(m[1]) : null; };
+    const isRpgSave = (rel) => /^save\/(file\d+|global|config)\.rpgsave$/i.test(rel);
     const cache = () => caches.open(cacheName);
     const readIndex = async (c) => { const r = await c.match(indexUrl); return r ? r.json() : {}; };
     const writeIndex = async (c, idx) => {
@@ -200,27 +201,37 @@
       const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
       if (sw) sw.postMessage({ type: "html5-index-changed", id: g.id });
     };
+    // ゲームに最初から入っていた save/*.rpgsave（PC で遊んだフォルダを追加した場合など）を、まだ無ければ localStorage へ
+    async function seedSaves() {
+      const c = await cache();
+      for (const rel of Object.values(await readIndex(c))) {
+        const key = isRpgSave(rel) && nameToKey(rel.slice(5));
+        if (!key || localStorage.getItem(ns + key) !== null) continue;
+        const res = await c.match(url(rel));
+        if (res) localStorage.setItem(ns + key, (await res.text()).trim());
+      }
+    }
     return {
-      roots: [
-        { id: "game", icon: "🎮", label: T.rootGame, always: true },
-        { id: "save", icon: "💾", label: T.rootSave, always: true, flat: true },
-      ],
+      seedSaves,
+      roots: [{ id: "game", icon: "🎮", label: T.rootGame, always: true }],
       note: T.noteHtml5,
       tracksChanges: false,
-      // 「全部ダウンロード」：PC 版と同じく、セーブは save/ に入れる
-      allPath: (name) => { const { root, rest } = split(name); return root === "game" ? rest : "save/" + rest; },
+      // 「全部ダウンロード」：セーブも PC 版と同じ save/ に入る
+      allPath: (name) => split(name).rest,
       zipItem: async (it, name) => (it.key !== undefined
         ? { name, bytes: new TextEncoder().encode(localStorage.getItem(ns + it.key) || "") }
         : { name, get: async () => { const r = await (await cache()).match(url(it.rel)); if (!r) throw new Error("not found: " + it.rel); return r.blob(); } }),
       async load() {
+        await seedSaves();
         const items = new Map();
         for (const rel of Object.values(await readIndex(await cache()))) {
+          if (isRpgSave(rel)) continue; // ゲームが使うのは localStorage 側
           items.set("game/" + rel, { name: "game/" + rel, size: null, state: "orig", rel });
         }
         for (const k of Object.keys(localStorage)) {
           if (!k.startsWith(ns)) continue;
           const key = k.slice(ns.length);
-          const name = "save/" + keyToName(key);
+          const name = "game/save/" + keyToName(key);
           items.set(name, { name, size: new Blob([localStorage.getItem(k) || ""]).size, state: "orig", key });
         }
         return { items, dirs: new Set(madeDirs) };
@@ -238,15 +249,12 @@
         return new Uint8Array(await r.arrayBuffer());
       },
       async write(list) {
-        const saves = list.filter((x) => split(x.name).root === "save");
-        for (const x of saves) {
-          const base = split(x.name).rest;
-          if (base.includes("/") || !nameToKey(base)) throw new Error(fmt(T.badSave, { name: base }));
+        const files = [];
+        for (const x of list) {
+          const key = saveKeyOf(split(x.name).rest);
+          if (key) localStorage.setItem(ns + key, new TextDecoder().decode(x.bytes).trim());
+          else files.push(x);
         }
-        for (const x of saves) {
-          localStorage.setItem(ns + nameToKey(split(x.name).rest), new TextDecoder().decode(x.bytes).trim());
-        }
-        const files = list.filter((x) => split(x.name).root === "game");
         if (!files.length) return;
         const c = await cache();
         const idx = await readIndex(c);
@@ -703,5 +711,10 @@
     render();
   }
 
-  window.FileManager = { open, downloadAll };
+  // ブラウザで直接動くゲームを起動する前に呼ぶ（save/*.rpgsave を localStorage へ）
+  async function prepareHtml5(g, html5) {
+    try { await html5Backend(g, html5, L()).seedSaves(); } catch (e) {}
+  }
+
+  window.FileManager = { open, downloadAll, prepareHtml5 };
 })();

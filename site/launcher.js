@@ -522,7 +522,10 @@ function renderCard(g) {
   };
   const dl = button("lib.downloadAll", "", downloadAll);
   if (html5) {
-    row.appendChild(button("lib.playHtml5", "primary grow", () => { location.href = "play/" + encodeURIComponent(g.id) + "/index.html"; }));
+    row.appendChild(button("lib.playHtml5", "primary grow", async () => {
+      await FileManager.prepareHtml5(g, fmOpts.html5);
+      location.href = "play/" + encodeURIComponent(g.id) + "/index.html";
+    }));
   } else {
     let target = g.exe;
     const play = button(/\.msi$/i.test(target) ? "lib.install" : "lib.play", "primary grow", () => start(Object.assign({}, current(), { exe: target })));

@@ -203,6 +203,12 @@ function injectIntoIndex(html, id) {
     "s.getItem=function(k){return g.call(this,p+k)};" +
     "s.setItem=function(k,v){return t.call(this,p+k,v)};" +
     "s.removeItem=function(k){return r.call(this,p+k)};" +
+    // ツクール MV/MZ はブラウザで動くとき、セーブに記録されたタイトルが今のゲームのタイトルと完全に一致しないと
+    // そのセーブを無いものとして扱う（PC 版はこの確認をしない）。PC から移したセーブや、タイトルが変わった版でも
+    // 読めるよう、PC 版と同じく「セーブがあれば使える」にする。プラグインの読み込み後（load）に差し替える
+    "addEventListener('load',function(){var D=window.DataManager;if(!D||!D.isThisGameFile)return;" +
+    "var o=D.isThisGameFile;D.isThisGameFile=function(id){if(o.call(this,id))return true;" +
+    "var gi=this._globalInfo||(this.loadGlobalInfo&&this.loadGlobalInfo());return !!(gi&&gi[id]);};});" +
     "})();</script><script src=\"../../play-audio.js\"></script><script src=\"../../play-pad.js\"></script>";
   return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + tag) : tag + html;
 }
