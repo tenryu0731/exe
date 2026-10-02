@@ -500,6 +500,13 @@ function renderCard(g) {
   const row = document.createElement("div");
   row.className = "row";
   row.style.marginTop = "12px";
+  // ファイル管理（filemgr.js）。閉じたらセーブ欄の表示を更新する
+  let saveBox = null;
+  const openFiles = () => FileManager.open(g, {
+    gameFile, makeZip, offerFile,
+    html5: { cacheName: HTML5_CACHE, ns: saveNs(g.id) },
+    onChange: () => { if (saveBox && saveBox.refresh) saveBox.refresh(); },
+  });
   if (html5) {
     row.appendChild(button("lib.playHtml5", "primary grow", () => { location.href = "play/" + encodeURIComponent(g.id) + "/index.html"; }));
   } else {
@@ -531,9 +538,12 @@ function renderCard(g) {
     hint.textContent = t("lib.desktopHint");
     adv.append(desk, hint);
     card.appendChild(adv);
-    card.appendChild(wineSaveControls(g));
+    saveBox = wineSaveControls(g, openFiles);
     row.appendChild(play);
   }
+  if (html5) saveBox = saveControls(g);
+  card.appendChild(saveBox);
+  row.appendChild(button("lib.files", "", openFiles));
   row.appendChild(button("lib.delete", "danger", async () => {
     if (!confirm(t("lib.deleteConfirm", { title: g.title }))) return;
     await removeGameFile(g.id);
@@ -543,7 +553,6 @@ function renderCard(g) {
     renderLibrary();
   }));
   card.appendChild(row);
-  if (html5) card.appendChild(saveControls(g));
   return card;
 }
 
@@ -675,9 +684,9 @@ async function offerFile(blob, fileName) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
-// Wine で動かすソフトのセーブ：ファイル管理画面（filemgr.js）を開くほか、変更したファイルをまとめて
-// バックアップ（書き出し）・復元（取り込み）できる
-function wineSaveControls(g) {
+// Wine で動かすソフトのセーブ：変更したファイルをまとめて ZIP で保存・復元する。
+// 個別のファイルはカードの「ファイル」（filemgr.js）で扱う
+function wineSaveControls(g, openManager) {
   const W = window.WineSaves;
   const box = document.createElement("details");
   const sum = document.createElement("summary");
@@ -700,8 +709,6 @@ function wineSaveControls(g) {
     st.className = "status";
     st.textContent = files.length ? t("ws.count", { n: files.length, game: inGame }) : t("ws.none");
   };
-
-  const openManager = () => FileManager.open(g, { gameFile, makeZip, offerFile, onChange: refresh });
 
   const exportAll = async () => {
     await refresh();
@@ -739,21 +746,25 @@ function wineSaveControls(g) {
   const row = document.createElement("div");
   row.className = "row";
   row.style.marginTop = "8px";
-  row.append(button("ws.manage", "grow primary-soft", openManager), button("ws.export", "grow", exportAll), button("ws.import", "grow", () => input.click()));
+  row.append(button("ws.export", "grow", exportAll), button("ws.import", "grow", () => input.click()));
   const hint = document.createElement("p");
   hint.className = "hint";
   hint.textContent = t("ws.hint");
   box.append(sum, st, row, hint, input);
   let loaded = false;
   box.addEventListener("toggle", () => { if (box.open && !loaded) { loaded = true; refresh(); } });
+  box.refresh = () => { if (loaded) refresh(); };
   return box;
 }
 
+// ブラウザで直接動くゲーム（ツクール MV）のセーブ：localStorage と .rpgsave（ZIP）のやり取り
 function saveControls(g) {
-  const box = document.createElement("div");
-  box.style.marginTop = "8px";
+  const box = document.createElement("details");
+  const sum = document.createElement("summary");
+  sum.textContent = t("ws.title");
   const row = document.createElement("div");
   row.className = "row";
+  row.style.marginTop = "8px";
   const input = document.createElement("input");
   input.type = "file"; input.multiple = true; input.hidden = true;
   input.accept = ".zip,.rpgsave,application/zip,application/octet-stream";
@@ -802,7 +813,8 @@ function saveControls(g) {
     await offerFile(makeZip(items), g.title + " save.zip");
   };
   row.append(button("save.import", "grow", () => input.click()), button("save.export", "grow", exp));
-  box.append(row, st, input);
+  box.append(sum, st, row, input);
+  box.refresh = showCount;
   showCount();
   return box;
 }

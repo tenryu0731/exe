@@ -190,6 +190,11 @@ async function resolvePlayPath(cache, id, rel) {
   return null;
 }
 
+// ファイル管理（filemgr.js）でファイルを追加・削除したら、覚えている一覧を捨てる
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "html5-index-changed") indexMemo.delete(event.data.id);
+});
+
 function injectIntoIndex(html, id) {
   const ns = JSON.stringify("exe:" + id + ":");
   const tag =
@@ -211,6 +216,7 @@ async function servePlay(request, id, rawRel) {
   const found = await resolvePlayPath(cache, id, rel);
   if (!found) return new Response("not found: " + rel, { status: 404 });
   const res = await cache.match(canonUrl(id, found));
+  if (!res) return new Response("not found: " + rel, { status: 404 });
   const type = res.headers.get("Content-Type") || "application/octet-stream";
 
   if (found.toLowerCase() === "index.html") {

@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-10-02 (11)",
+    "items": [
+      "各ゲームのカードに「📂 ファイル」を追加し、セーブの有無に関係なく常にファイルを開けるように",
+      "ブラウザで直接動くゲーム（ツクール MV など）もファイル画面に対応。ゲームのファイルの保存・置き換え・削除・追加と、セーブ（.rpgsave）の確認・取り込みができます"
+    ],
+    "items_en": [
+      "Every game card now has \"📂 Files\", available whether or not there are saves",
+      "Games that run directly in the browser (RPG Maker MV etc.) now work with the Files screen: save, replace, delete or add game files, and view or import saves (.rpgsave)"
+    ]
+  },
+  {
     "date": "2026-10-02 (10)",
     "items": [
       "文言を全体的に簡潔に整理。「うまく動かないときの設定」を「詳細設定」に戻し、セーブのボタンを「セーブを ZIP で保存」「ZIP から復元」に変更"

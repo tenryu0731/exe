@@ -1,10 +1,11 @@
-// ファイル管理画面：Wine で動かすソフトのファイルを、パソコンのファイル管理のように見て操作する
+// ファイル管理画面：ゲームのファイルを、パソコンのファイル管理のように見て操作する
 //
-// 見えるもの：ゲームのフォルダ（追加した ZIP の中身＝元のファイル）と、ソフトが作成・変更したファイル
-// （Boxedwine がゲームごとの IndexedDB に保存しているもの。wine-saves.js）を重ねたもの。
-// できること：フォルダを開く・戻る、ファイルを保存（端末へ）・置き換え・削除（変更の取り消し）、
-// フォルダにファイルを追加・新しいフォルダ・フォルダを ZIP で保存、変更したものだけ表示。
-// 元のファイル（ZIP の中身）は書き換えずに、上に重ねた変更として保存する。削除すると元に戻る。
+// 中身の読み書きは「バックエンド」に任せ、画面は共通。項目名は "<場所>/<場所の中のパス>"。
+//  - Wine で動かすゲーム（wineBackend）: 追加した ZIP の中身（元のファイル）に、ソフトが作成・変更したファイル
+//    （Boxedwine がゲームごとの IndexedDB に保存しているもの。wine-saves.js）を重ねて見せる。
+//    元のファイルは書き換えず、上に重ねた変更として保存する。変更を消すと元に戻る。
+//  - ブラウザで直接動くゲーム（html5Backend）: 展開済みのファイル（Cache Storage）と、
+//    ゲームが localStorage に保存したセーブ。どちらも直接書き換える（元に戻す手段はない）。
 (function () {
   "use strict";
 
@@ -12,6 +13,7 @@
   const JA = {
     title: "{title} のファイル", close: "閉じる", up: "上へ", changedOnly: "変更分のみ表示",
     rootGame: "ゲームのフォルダ", rootUser: "ユーザーデータ（AppData・ドキュメント）", rootOther: "Windows 設定（レジストリなど）", showOther: "Windows 設定も表示",
+    rootSave: "セーブデータ",
     stOrig: "元のまま", stChanged: "変更あり", stNew: "新しく作成",
     addHere: "ファイルを追加", addFolderHere: "フォルダを追加", newFolder: "新規フォルダ", zipFolder: "ZIP で保存", top: "トップ",
     save: "端末に保存", replace: "別のファイルで置き換え", revert: "変更を取り消す", remove: "削除",
@@ -21,11 +23,14 @@
     confirmAdd: "{n} 個のファイルをこのフォルダに追加します（同名のファイルは上書きされます）。",
     done: "完了しました。次回の起動から反映されます。", failed: "失敗しました: {msg}",
     note: "変更はブラウザ内に保存されます。追加したゲームの元ファイルは変更されません。",
+    noteHtml5: "変更はそのまま反映され、元に戻せません。セーブはブラウザ内（localStorage）に保存されています。",
+    badSave: "セーブデータとして扱えないファイルです: {name}（ツクール MV は file1.rpgsave・global.rpgsave・config.rpgsave）",
     items: "{n} 項目", path: "場所",
   };
   const EN = {
     title: "Files of {title}", close: "Close", up: "Up", changedOnly: "Show changed only",
     rootGame: "Game folder", rootUser: "User data (AppData, Documents)", rootOther: "Windows settings (registry etc.)", showOther: "Show Windows settings",
+    rootSave: "Save data",
     stOrig: "original", stChanged: "changed", stNew: "new",
     addHere: "Add files", addFolderHere: "Add folder", newFolder: "New folder", zipFolder: "Save as ZIP", top: "Top",
     save: "Save to device", replace: "Replace with another file", revert: "Undo changes", remove: "Delete",
@@ -35,10 +40,13 @@
     confirmAdd: "Add {n} files to this folder (files with the same name are overwritten)?",
     done: "Done. Takes effect on the next run.", failed: "Failed: {msg}",
     note: "Changes are stored in the browser. The original game files are not modified.",
+    noteHtml5: "Changes apply directly and cannot be undone. Saves are stored in the browser (localStorage).",
+    badSave: "Not usable as save data: {name} (RPG Maker MV uses file1.rpgsave, global.rpgsave, config.rpgsave)",
     items: "{n} items", path: "Location",
   };
   const fmt = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m));
-  const size = (n) => (n < 1024 ? n + " B" : n < 1048576 ? Math.ceil(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB");
+  const size = (n) => (n == null ? "" : n < 1024 ? n + " B" : n < 1048576 ? Math.ceil(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB");
+  const split = (name) => { const i = name.indexOf("/"); return { root: name.slice(0, i), rest: name.slice(i + 1) }; };
 
   const CSS = `
   .fm { position: fixed; inset: 0; z-index: 100; background: var(--bg, #f7f7f5); color: var(--text, #1b1c1e); display: flex; flex-direction: column;
@@ -81,19 +89,171 @@
   .fm-sheet .fm-danger { color: var(--danger, #b3261e); }
   `;
 
-  // パスは書き出し ZIP と同じ形（C/… D/… registry/user.reg）。表示用の「場所」に振り分ける
-  function rootOf(name) {
-    if (name.startsWith("C/files/")) return { root: "game", rest: name.slice(8) };
-    if (name.startsWith("C/users/")) return { root: "user", rest: name.slice(8) };
-    return { root: "other", rest: name };
-  }
-  function nameOf(root, rest) {
-    return root === "game" ? "C/files/" + rest : root === "user" ? "C/users/" + rest : rest;
+  // ---------- Wine で動かすゲーム ----------
+  // wine-saves.js の名前（C/files/… C/users/… registry/user.reg など）と、画面の名前（game/… user/… other/…）の変換
+  function wineBackend(g, gameFile, T) {
+    const W = window.WineSaves;
+    const toFm = (n) => (n.startsWith("C/files/") ? "game/" + n.slice(8) : n.startsWith("C/users/") ? "user/" + n.slice(8) : "other/" + n);
+    const toW = (n) => {
+      const { root, rest } = split(n);
+      return root === "game" ? "C/files/" + rest : root === "user" ? "C/users/" + rest : rest;
+    };
+    const target = (name) => {
+      const k = W.importKey(toW(name));
+      if (!k) throw new Error(name);
+      return k;
+    };
+    let file = null;
+    let index = null;
+    return {
+      // optional: 既定では隠す（レジストリなど、ふだん触る必要がない。ZIP での保存には含まれる）
+      roots: [
+        { id: "game", icon: "🎮", label: T.rootGame, always: true },
+        { id: "user", icon: "👤", label: T.rootUser },
+        { id: "other", icon: "⚙️", label: T.rootOther, optional: true, readOnly: true },
+      ],
+      note: T.note,
+      tracksChanges: true,
+      async load() {
+        if (!file) {
+          try { file = await gameFile(g.id); index = await readZipIndex(file); } catch (e) { index = { entries: [] }; }
+        }
+        const items = new Map();
+        for (const e of index.entries) {
+          if (e.dir || isJunkPath(e.name)) continue;
+          const name = "game/" + e.name;
+          items.set(name, { name, size: e.size || 0, state: "orig", entry: e });
+        }
+        for (const f of await W.changedFiles(g.id)) {
+          const name = toFm(f.name);
+          const prev = items.get(name);
+          items.set(name, Object.assign({}, prev || {}, { name, size: f.size, state: prev ? "changed" : "new", w: f }));
+        }
+        return { items, dirs: new Set((await W.changedDirs(g.id)).map(toFm)) };
+      },
+      async read(it) {
+        if (it.state === "orig") return zipEntryBytes(file, it.entry);
+        const [one] = await W.readFiles(g.id, [it.w]);
+        return one.bytes;
+      },
+      write: (list) => W.writeFiles(g.id, list.map((x) => Object.assign({ bytes: x.bytes }, target(x.name)))),
+      mkdir: (name) => W.makeDir(g.id, target(name + "/x")),
+      canReplace: (it) => split(it.name).root !== "other" || it.name === "other/registry/user.reg",
+      canRevert: (it) => it.state === "changed",
+      canRemove: (it) => it.state === "new",
+      remove: (it) => W.deleteFiles(g.id, [it.w]),
+    };
   }
 
-  async function open(g, { gameFile, makeZip, offerFile, onChange }) {
-    const W = window.WineSaves;
+  // ---------- ブラウザで直接動くゲーム（RPGツクールMV/MZ など） ----------
+  // ファイルは Cache Storage の play/<id>/<パス>（一覧は .exe-index.json）、セーブは localStorage の "exe:<id>:<キー>"
+  const MIME = {
+    html: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8",
+    css: "text/css; charset=utf-8", txt: "text/plain; charset=utf-8", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", ogg: "audio/ogg", m4a: "audio/mp4", mp3: "audio/mpeg",
+    wav: "audio/wav", webm: "video/webm", mp4: "video/mp4", woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", otf: "font/otf",
+    wasm: "application/wasm",
+  };
+  function html5Backend(g, { cacheName, ns }, T) {
+    const base = new URL("play/" + encodeURIComponent(g.id) + "/", location.href).href;
+    const url = (rel) => base + rel.split("/").map(encodeURIComponent).join("/");
+    const indexUrl = base + ".exe-index.json";
+    const madeDirs = new Set(); // キャッシュにはフォルダが無いので、作ったフォルダはこの画面の間だけ覚えておく
+    // localStorage のキー ⇔ ファイル名（ツクール MV は PC 版の .rpgsave と同じ名前にする）
+    const keyToName = (k) => {
+      const m = /^RPG File(\d+)$/.exec(k);
+      return m ? "file" + m[1] + ".rpgsave" : k === "RPG Global" ? "global.rpgsave" : k === "RPG Config" ? "config.rpgsave" : k.replace(/\//g, "%2F");
+    };
+    const nameToKey = (n) => {
+      const m = /^file(\d+)\.rpgsave$/i.exec(n);
+      if (m) return "RPG File" + Number(m[1]);
+      if (/^global\.rpgsave$/i.test(n)) return "RPG Global";
+      if (/^config\.rpgsave$/i.test(n)) return "RPG Config";
+      const k = n.replace(/%2F/g, "/");
+      return localStorage.getItem(ns + k) !== null ? k : null; // それ以外は、既にあるキーの置き換えだけ
+    };
+    const cache = () => caches.open(cacheName);
+    const readIndex = async (c) => { const r = await c.match(indexUrl); return r ? r.json() : {}; };
+    const writeIndex = async (c, idx) => {
+      await c.put(indexUrl, new Response(JSON.stringify(idx), { headers: { "Content-Type": "application/json" } }));
+      // sw.js が覚えている一覧を捨てさせる
+      const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+      if (sw) sw.postMessage({ type: "html5-index-changed", id: g.id });
+    };
+    return {
+      roots: [
+        { id: "game", icon: "🎮", label: T.rootGame, always: true },
+        { id: "save", icon: "💾", label: T.rootSave, always: true, flat: true },
+      ],
+      note: T.noteHtml5,
+      tracksChanges: false,
+      async load() {
+        const items = new Map();
+        for (const rel of Object.values(await readIndex(await cache()))) {
+          items.set("game/" + rel, { name: "game/" + rel, size: null, state: "orig", rel });
+        }
+        for (const k of Object.keys(localStorage)) {
+          if (!k.startsWith(ns)) continue;
+          const key = k.slice(ns.length);
+          const name = "save/" + keyToName(key);
+          items.set(name, { name, size: new Blob([localStorage.getItem(k) || ""]).size, state: "orig", key });
+        }
+        return { items, dirs: new Set(madeDirs) };
+      },
+      async sizeOf(it) {
+        const r = await (await cache()).match(url(it.rel));
+        if (!r) return null;
+        const len = r.headers.get("Content-Length");
+        return len ? Number(len) : (await r.blob()).size;
+      },
+      async read(it) {
+        if (it.key !== undefined) return new TextEncoder().encode(localStorage.getItem(ns + it.key) || "");
+        const r = await (await cache()).match(url(it.rel));
+        if (!r) throw new Error("not found");
+        return new Uint8Array(await r.arrayBuffer());
+      },
+      async write(list) {
+        const saves = list.filter((x) => split(x.name).root === "save");
+        for (const x of saves) {
+          const base = split(x.name).rest;
+          if (base.includes("/") || !nameToKey(base)) throw new Error(fmt(T.badSave, { name: base }));
+        }
+        for (const x of saves) {
+          localStorage.setItem(ns + nameToKey(split(x.name).rest), new TextDecoder().decode(x.bytes).trim());
+        }
+        const files = list.filter((x) => split(x.name).root === "game");
+        if (!files.length) return;
+        const c = await cache();
+        const idx = await readIndex(c);
+        for (const x of files) {
+          const rel = split(x.name).rest.normalize("NFC");
+          const ext = (/\.([a-z0-9]+)$/i.exec(rel) || [])[1];
+          await c.put(url(rel), new Response(new Blob([x.bytes]), {
+            headers: { "Content-Type": MIME[(ext || "").toLowerCase()] || "application/octet-stream", "Content-Length": String(x.bytes.length) },
+          }));
+          idx[rel.toLowerCase()] = rel;
+        }
+        await writeIndex(c, idx);
+      },
+      async mkdir(name) { madeDirs.add(name); },
+      canReplace: () => true,
+      canRevert: () => false,
+      canRemove: () => true,
+      async remove(it) {
+        if (it.key !== undefined) { localStorage.removeItem(ns + it.key); return; }
+        const c = await cache();
+        await c.delete(url(it.rel));
+        const idx = await readIndex(c);
+        if (idx[it.rel.toLowerCase()] === it.rel) delete idx[it.rel.toLowerCase()];
+        await writeIndex(c, idx);
+      },
+    };
+  }
+
+  // ---------- 画面 ----------
+  async function open(g, { gameFile, makeZip, offerFile, onChange, html5 }) {
     const T = L();
+    const B = g.mode === "html5" ? html5Backend(g, html5, T) : wineBackend(g, gameFile, T);
     if (!document.getElementById("fm-style")) {
       const st = document.createElement("style");
       st.id = "fm-style";
@@ -109,7 +269,7 @@
       <div class="fm-foot"><p class="fm-status"></p><div class="fm-note"></div></div>`;
     el.querySelector("h3").textContent = fmt(T.title, { title: g.title });
     el.querySelector(".fm-close").textContent = "✕ " + T.close;
-    el.querySelector(".fm-note").textContent = T.note;
+    el.querySelector(".fm-note").textContent = B.note;
     document.body.appendChild(el);
     document.body.style.overflow = "hidden";
     const listEl = el.querySelector(".fm-list");
@@ -120,45 +280,32 @@
     const closeAll = () => { el.remove(); document.body.style.overflow = ""; if (onChange) onChange(); };
     el.querySelector(".fm-close").addEventListener("click", closeAll);
 
-    let file = null; // ゲームの ZIP（元のファイル）
-    let index = null;
-    // name -> { name, size, state: "orig" | "changed" | "new", entry（元）, key/drive（変更） }
+    // name -> { name, size, state: "orig" | "changed" | "new", ...バックエンドの情報 }
     let items = new Map();
-    let dirs = new Set(); // 変更側で作った空のフォルダ
+    let dirs = new Set(); // 空のフォルダ（"<場所>/<パス>"）
     let path = []; // [root, ...folders]
     let changedOnly = false;
-    // レジストリなど Windows 側の設定は、ふだん触る必要がないので既定では隠す（バックアップには含まれる）
     let showOther = false;
+    const rootInfo = (id) => B.roots.find((r) => r.id === id) || {};
 
     async function load() {
       listEl.innerHTML = `<div class="fm-loading">${T.loading}</div>`;
-      items = new Map();
-      if (!file) {
-        try { file = await gameFile(g.id); index = await readZipIndex(file); } catch (e) { index = { entries: [] }; }
+      try {
+        ({ items, dirs } = await B.load());
+      } catch (e) {
+        say(fmt(T.failed, { msg: e.message }), true);
       }
-      for (const e of index.entries) {
-        if (e.dir || isJunkPath(e.name)) continue;
-        const name = "C/files/" + e.name;
-        items.set(name, { name, size: e.size || 0, state: "orig", entry: e });
-      }
-      for (const f of await W.changedFiles(g.id)) {
-        const prev = items.get(f.name);
-        items.set(f.name, Object.assign({}, prev || {}, { name: f.name, size: f.size, state: prev ? "changed" : "new", key: f.key, drive: f.drive }));
-      }
-      dirs = new Set((await W.changedDirs(g.id)).map((d) => d));
       render();
     }
 
-    // 今のフォルダの中身：{ folders: Map(name -> {changed}), files: [...] }
+    // 今のフォルダの中身：{ folders: Map(name -> {changed, count}), files: [...] }
     function children() {
       const folders = new Map();
       const files = [];
-      const [root, ...sub] = path;
-      const prefix = sub.length ? sub.join("/") + "/" : "";
+      const prefix = path.join("/") + "/";
       const consider = (name, item) => {
-        const r = rootOf(name);
-        if (r.root !== root || !r.rest.startsWith(prefix)) return;
-        const rest = r.rest.slice(prefix.length);
+        if (!name.startsWith(prefix)) return;
+        const rest = name.slice(prefix.length);
         const slash = rest.indexOf("/");
         if (slash >= 0) {
           const fname = rest.slice(0, slash);
@@ -177,8 +324,6 @@
       return { folders, files: files.sort((a, b) => a.base.localeCompare(b.base)) };
     }
 
-    function rootLabel(r) { return r === "game" ? T.rootGame : r === "user" ? T.rootUser : T.rootOther; }
-
     function render() {
       // パンくず
       crumbs.innerHTML = "";
@@ -190,52 +335,35 @@
         const sep = document.createElement("span");
         sep.textContent = "›";
         const b = document.createElement("button");
-        b.textContent = i === 0 ? rootLabel(p) : p;
+        b.textContent = i === 0 ? rootInfo(p).label : p;
         b.addEventListener("click", () => { path = path.slice(0, i + 1); render(); });
         crumbs.append(sep, b);
       });
       // ツール
       tools.innerHTML = "";
       if (path.length) {
+        const r = rootInfo(path[0]);
         tools.append(btn("↑ " + T.up, () => { path.pop(); render(); }));
-        if (path[0] !== "other") {
-          tools.append(btn("＋ " + T.addHere, () => pickFiles(false)), btn("＋ " + T.addFolderHere, () => pickFiles(true)),
-            btn("📁 " + T.newFolder, newFolder), btn("⤓ " + T.zipFolder, zipFolder));
-        } else tools.append(btn("⤓ " + T.zipFolder, zipFolder));
+        if (!r.readOnly) tools.append(btn("＋ " + T.addHere, () => pickFiles(false)));
+        if (!r.readOnly && !r.flat) tools.append(btn("＋ " + T.addFolderHere, () => pickFiles(true)), btn("📁 " + T.newFolder, newFolder));
+        tools.append(btn("⤓ " + T.zipFolder, zipFolder));
       }
-      const lab = document.createElement("label");
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = changedOnly;
-      cb.addEventListener("change", () => { changedOnly = cb.checked; render(); });
-      lab.append(cb, document.createTextNode(T.changedOnly));
-      tools.appendChild(lab);
-      if (!path.length) {
-        const lab2 = document.createElement("label");
-        const cb2 = document.createElement("input");
-        cb2.type = "checkbox";
-        cb2.checked = showOther;
-        cb2.addEventListener("change", () => { showOther = cb2.checked; render(); });
-        lab2.append(cb2, document.createTextNode(T.showOther));
-        tools.appendChild(lab2);
-      }
+      if (B.tracksChanges) tools.appendChild(check(T.changedOnly, changedOnly, (v) => { changedOnly = v; }));
+      if (!path.length && B.roots.some((r) => r.optional)) tools.appendChild(check(T.showOther, showOther, (v) => { showOther = v; }));
 
       listEl.innerHTML = "";
       if (!path.length) {
         // 一番上：場所ごと
-        const counts = { game: 0, user: 0, other: 0 };
-        const changed = { game: false, user: false, other: false };
-        for (const [name, it] of items) {
-          if (changedOnly && it.state === "orig") continue;
-          const r = rootOf(name).root;
-          counts[r]++;
-          if (it.state !== "orig") changed[r] = true;
-        }
-        for (const r of ["game", "user", "other"]) {
-          if (r !== "game" && !counts[r]) continue;
-          if (r === "other" && !showOther) continue;
-          listEl.appendChild(row(r === "game" ? "🎮" : r === "user" ? "👤" : "⚙️", rootLabel(r), fmt(T.items, { n: counts[r] }),
-            changed[r] ? "changed" : null, () => { path = [r]; render(); }));
+        for (const r of B.roots) {
+          let n = 0;
+          let changed = false;
+          for (const [name, it] of items) {
+            if (!name.startsWith(r.id + "/") || (changedOnly && it.state === "orig")) continue;
+            n++;
+            if (it.state !== "orig") changed = true;
+          }
+          if ((!r.always && !n) || (r.optional && !showOther)) continue;
+          listEl.appendChild(row(r.icon, r.label, fmt(T.items, { n }), changed ? "changed" : null, () => { path = [r.id]; render(); }));
         }
         return;
       }
@@ -248,7 +376,17 @@
         listEl.appendChild(row("📁", name, fmt(T.items, { n: f.count }), f.changed ? "changed" : null, () => { path = path.concat(name); render(); }));
       }
       for (const f of files) {
-        listEl.appendChild(row(iconFor(f.base), f.base, size(f.size), f.state === "orig" ? null : f.state, () => fileSheet(f)));
+        const r = row(iconFor(f.base), f.base, size(f.size), f.state === "orig" ? null : f.state, () => fileSheet(f));
+        listEl.appendChild(r);
+        // 大きさを後から調べるバックエンド（展開済みのファイルは数が多いので、表示したものだけ）
+        if (f.size == null && B.sizeOf) {
+          B.sizeOf(f).then((n) => {
+            const it = items.get(f.name);
+            if (it) it.size = n;
+            f.size = n;
+            r.querySelector(".fm-meta").textContent = size(n);
+          }).catch(() => {});
+        }
       }
     }
 
@@ -284,13 +422,17 @@
       b.addEventListener("click", onClick);
       return b;
     }
+    function check(label, value, set) {
+      const lab = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = value;
+      cb.addEventListener("change", () => { set(cb.checked); render(); });
+      lab.append(cb, document.createTextNode(label));
+      return lab;
+    }
 
     // ---- ファイル 1 つの操作 ----
-    async function bytesOf(it) {
-      if (it.state === "orig") return zipEntryBytes(file, it.entry);
-      const [one] = await W.readFiles(g.id, [it]);
-      return one.bytes;
-    }
     function fileSheet(it) {
       const bg = document.createElement("div");
       bg.className = "fm-sheet-bg";
@@ -299,31 +441,32 @@
       const h = document.createElement("h4");
       h.textContent = it.base;
       const p = document.createElement("p");
-      p.textContent = size(it.size) + " · " + (it.state === "orig" ? T.stOrig : it.state === "new" ? T.stNew : T.stChanged) + " · " + T.path + ": " + displayPath();
+      const state = B.tracksChanges ? (it.state === "orig" ? T.stOrig : it.state === "new" ? T.stNew : T.stChanged) + " · " : "";
+      p.textContent = (it.size == null ? "" : size(it.size) + " · ") + state + T.path + ": " + displayPath();
       const closeSheet = () => bg.remove();
       bg.addEventListener("click", (e) => { if (e.target === bg) closeSheet(); });
       sh.append(h, p, btn("⤓ " + T.save, async () => {
         closeSheet();
-        try { await offerFile(new Blob([await bytesOf(it)]), it.base); } catch (e) { say(fmt(T.failed, { msg: e.message }), true); }
+        try { await offerFile(new Blob([await B.read(it)]), it.base); } catch (e) { say(fmt(T.failed, { msg: e.message }), true); }
       }, "fm-primary"));
-      if (path[0] !== "other" || it.name === "registry/user.reg") {
+      if (B.canReplace(it)) {
         sh.append(btn("⇄ " + T.replace, () => {
           closeSheet();
           pick(false, false, async (files) => {
             if (!files.length || !confirm(fmt(T.confirmReplace, { name: it.base }))) return;
-            await apply(async () => W.writeFiles(g.id, [Object.assign({ bytes: new Uint8Array(await files[0].arrayBuffer()) }, W.importKey(it.name))]));
+            await apply(async () => B.write([{ name: it.name, bytes: new Uint8Array(await files[0].arrayBuffer()) }]));
           });
         }));
       }
-      if (it.state === "changed") {
+      if (B.canRevert(it)) {
         sh.append(btn("↺ " + T.revert, async () => {
           closeSheet();
-          if (confirm(fmt(T.confirmRevert, { name: it.base }))) await apply(() => W.deleteFiles(g.id, [it]));
+          if (confirm(fmt(T.confirmRevert, { name: it.base }))) await apply(() => B.remove(it));
         }));
-      } else if (it.state === "new") {
+      } else if (B.canRemove(it)) {
         sh.append(btn("🗑 " + T.remove, async () => {
           closeSheet();
-          if (confirm(fmt(T.confirmRemove, { name: it.base }))) await apply(() => W.deleteFiles(g.id, [it]));
+          if (confirm(fmt(T.confirmRemove, { name: it.base }))) await apply(() => B.remove(it));
         }, "fm-danger"));
       }
       sh.append(btn(T.cancel, closeSheet));
@@ -332,7 +475,7 @@
     }
     function displayPath() {
       const [root, ...sub] = path;
-      return [rootLabel(root)].concat(sub).join(" › ");
+      return [rootInfo(root).label].concat(sub).join(" › ");
     }
 
     async function apply(fn) {
@@ -346,10 +489,7 @@
     }
 
     // ---- フォルダの操作 ----
-    function folderName(base) {
-      const [root, ...sub] = path;
-      return nameOf(root, sub.concat(base ? [base] : []).join("/"));
-    }
+    const here = (rel) => path.join("/") + "/" + rel;
     function pick(multiple, folder, then) {
       const input = document.createElement("input");
       input.type = "file";
@@ -365,28 +505,27 @@
           const out = [];
           for (const f of files) {
             const rel = folder && f.webkitRelativePath ? f.webkitRelativePath : f.name;
-            out.push(Object.assign({ bytes: new Uint8Array(await f.arrayBuffer()) }, W.importKey(folderName(rel))));
+            out.push({ name: here(rel), bytes: new Uint8Array(await f.arrayBuffer()) });
           }
-          await W.writeFiles(g.id, out);
+          await B.write(out);
         });
       });
     }
     async function newFolder() {
       const name = (prompt(T.newFolderPrompt) || "").trim().replace(/[\\/:*?"<>|]/g, "_");
       if (!name) return;
-      await apply(() => W.makeDir(g.id, W.importKey(folderName(name) + "/x")));
+      await apply(() => B.mkdir(here(name)));
     }
     async function zipFolder() {
-      const [root, ...sub] = path;
-      const prefix = nameOf(root, sub.length ? sub.join("/") + "/" : "");
+      const prefix = path.join("/") + "/";
       const out = [];
       try {
         for (const [name, it] of items) {
           if (!name.startsWith(prefix) || (changedOnly && it.state === "orig")) continue;
-          out.push({ name: name.slice(prefix.length), bytes: await bytesOf(it) });
+          out.push({ name: name.slice(prefix.length), bytes: await B.read(it) });
         }
         if (!out.length) return say(T.empty, true);
-        const base = sub.length ? sub[sub.length - 1] : rootLabel(root);
+        const base = path.length > 1 ? path[path.length - 1] : rootInfo(path[0]).label;
         await offerFile(makeZip(out), g.title + " - " + base + ".zip");
       } catch (e) {
         say(fmt(T.failed, { msg: e.message }), true);
