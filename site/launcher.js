@@ -276,7 +276,7 @@ function looksJapanese(names, title) {
 
 async function addItems(items, title) {
   const st = $("add-status");
-  const buttons = [$("pick"), $("pick-folder"), $("demo"), $("testpack"), $("try")];
+  const buttons = [$("pick"), $("pick-folder"), $("testpack"), $("try")];
   st.className = "status";
   st.textContent = t("add.reading", { name: title });
   buttons.forEach((b) => (b.disabled = true));
@@ -399,17 +399,6 @@ document.addEventListener("drop", async (e) => {
   if (entries.length) for (const en of entries) await walkEntry(en, "", items);
   else items = itemsFromFileList(e.dataTransfer.files);
   if (items.length) addItems(items, titleFor(items));
-});
-
-// デモ（7-Zip 9.20、LGPL。demo/NOTICE.md）
-$("demo").addEventListener("click", async () => {
-  const existing = loadMeta().find((g) => g.demo);
-  if (existing) return start(existing);
-  const blob = await (await fetch("demo/7-zip.zip")).blob();
-  const id = await addItems([{ file: new File([blob], "7-Zip.zip", { type: "application/zip" }), path: "7-Zip.zip" }], "7-Zip (demo)");
-  if (!id) return;
-  updateMeta(id, { demo: true, exe: "7zFM.exe" });
-  start(loadMeta().find((g) => g.id === id));
 });
 
 // テスト用セット（scripts/testpack）：種類の違う小さな exe を 1 つにまとめたもの。ライブラリに追加するだけで、

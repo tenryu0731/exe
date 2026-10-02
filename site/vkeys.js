@@ -94,12 +94,12 @@
   };
 
   const CSS = `
-  .vk { --vk-h: 42px; --vk-w: 50px; --vk-fs: 14px;
+  .vk { --vk-h: 42px; --vk-w: 58px; --vk-fs: 14px;
     flex: 0 0 auto; background: #1c232b; border-top: 1px solid #46525f; padding: 6px 6px max(6px, env(safe-area-inset-bottom));
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
     font: 600 var(--vk-fs)/1 system-ui, -apple-system, "Hiragino Sans", sans-serif; color: #f2f5f8; }
-  .vk[data-size="0"] { --vk-h: 34px; --vk-w: 42px; --vk-fs: 12.5px; }
-  .vk[data-size="2"] { --vk-h: 54px; --vk-w: 62px; --vk-fs: 16px; }
+  .vk[data-size="0"] { --vk-h: 34px; --vk-w: 50px; --vk-fs: 12.5px; }
+  .vk[data-size="2"] { --vk-h: 54px; --vk-w: 70px; --vk-fs: 16px; }
   .vk.vk-hidden { display: none; }
   .vk button { color: #f2f5f8; background: #2b3540; border: 1px solid #46525f; border-radius: 7px; font: inherit; padding: 0 2px;
     -webkit-tap-highlight-color: transparent; touch-action: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

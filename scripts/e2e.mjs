@@ -117,8 +117,10 @@ async function testWineDemo(browserType, label) {
   const { browser, page, logs } = await newPage(browserType, label);
   const t0 = Date.now();
   try {
-    await page.locator("details.acc summary").first().click(); // 7-Zip は「使い方のコツ」の中
-    await Promise.all([page.waitForURL(/engine\/jit\/boxedwine\.html/, { timeout: 120000 }), page.click("#demo")]);
+    // 「試しに動かしてみる」＝動作確認用セット。最初の候補（01_SaveGame）を起動する
+    await page.click("#try");
+    await page.waitForFunction(() => /Added|追加しました/.test(document.querySelector("#add-status").textContent), null, { timeout: 60000 });
+    await Promise.all([page.waitForURL(/engine\/jit\/boxedwine\.html/, { timeout: 120000 }), page.locator("#library button.primary").first().click()]);
     let stats = null, best = null;
     const rounds = Number(process.env.E2E_WINE_ROUNDS || 40);
     for (let i = 0; i < rounds; i++) { // 既定で最大 10 分
@@ -127,15 +129,15 @@ async function testWineDemo(browserType, label) {
       console.log(label, "wine", Math.round((Date.now() - t0) / 1000) + "s", JSON.stringify(stats));
       if (stats && (!best || stats.colors > best.colors)) best = stats;
       if (i === 3 || i === 8) await shot(page, label + "-wine-" + i);
-      // 7-Zip のウインドウ（多色の UI）が出たら完了
+      // セーブのテスト用ゲームのウインドウ（色付きのボタン）が出たら完了
       if (stats && stats.colors >= 12 && stats.lit >= 20) { await page.waitForTimeout(5000); break; }
     }
     await shot(page, label + "-wine-final");
     const ok = !!(best && best.colors >= 12);
-    results.push([label + " wine 7-Zip demo", ok, JSON.stringify(best), Math.round((Date.now() - t0) / 1000) + "s"]);
+    results.push([label + " wine test pack (save game)", ok, JSON.stringify(best), Math.round((Date.now() - t0) / 1000) + "s"]);
     console.log(label, "wine logs:\n" + logs.filter((l) => /rror|fail|Exception|abort|wine|Mounted|Loaded/i.test(l)).slice(-40).join("\n"));
   } catch (e) {
-    results.push([label + " wine 7-Zip demo", false, e.message]);
+    results.push([label + " wine test pack (save game)", false, e.message]);
     await shot(page, label + "-wine-error").catch(() => {});
   }
   await browser.close();

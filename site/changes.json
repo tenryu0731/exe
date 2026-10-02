@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-10-02 (9)",
+    "items": [
+      "動作確認用セットに「セーブのテスト」ゲームを追加（最初に起動されます）。画面を押して数を増やし、3 つのスロットにセーブ・ロード。セーブは読める文字のファイルなので、「ファイルを管理」での書き出し・置き換え・取り消しを試せます",
+      "7-Zip のデモを削除"
+    ],
+    "items_en": [
+      "The test pack gains a \"save test\" game (started first): tap to count up and save or load three slots. The saves are readable text files, so you can try export, replace and undo in \"Manage files\"",
+      "Removed the 7-Zip demo"
+    ]
+  },
+  {
     "date": "2026-10-02 (8)",
     "items": [
       "「試しに動かしてみる」を動作確認用セットに変更（何度押しても 1 つだけ）",
