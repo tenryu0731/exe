@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-10-02 (10)",
+    "items": [
+      "文言を全体的に簡潔に整理。「うまく動かないときの設定」を「詳細設定」に戻し、セーブのボタンを「セーブを ZIP で保存」「ZIP から復元」に変更"
+    ],
+    "items_en": [
+      "Tightened wording throughout. \"If it does not work\" is \"Advanced settings\" again; the save buttons are now \"Save as ZIP\" and \"Restore from ZIP\""
+    ]
+  },
+  {
     "date": "2026-10-02 (9)",
     "items": [
       "動作確認用セットに「セーブのテスト」ゲームを追加（最初に起動されます）。画面を押して数を増やし、3 つのスロットにセーブ・ロード。セーブは読める文字のファイルなので、「ファイルを管理」での書き出し・置き換え・取り消しを試せます",

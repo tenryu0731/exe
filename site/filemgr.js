@@ -10,31 +10,31 @@
 
   const L = () => (window.I18N && I18N.lang === "en" ? EN : JA);
   const JA = {
-    title: "{title} のファイル", close: "閉じる", up: "上へ", changedOnly: "変更したものだけ表示",
-    rootGame: "ゲームのフォルダ", rootUser: "ユーザーのデータ（AppData・ドキュメント）", rootOther: "Windows の設定（レジストリなど・詳しい方向け）", showOther: "Windows の設定も表示（詳しい方向け）",
+    title: "{title} のファイル", close: "閉じる", up: "上へ", changedOnly: "変更分のみ表示",
+    rootGame: "ゲームのフォルダ", rootUser: "ユーザーデータ（AppData・ドキュメント）", rootOther: "Windows 設定（レジストリなど）", showOther: "Windows 設定も表示",
     stOrig: "元のまま", stChanged: "変更あり", stNew: "新しく作成",
     addHere: "ファイルを追加", addFolderHere: "フォルダを追加", newFolder: "新規フォルダ", zipFolder: "ZIP で保存", top: "トップ",
-    save: "端末に保存", replace: "別のファイルで置き換え", revert: "変更を取り消す（元に戻す）", remove: "削除",
-    cancel: "キャンセル", empty: "このフォルダは空です", loading: "読み込んでいます…",
+    save: "端末に保存", replace: "別のファイルで置き換え", revert: "変更を取り消す", remove: "削除",
+    cancel: "キャンセル", empty: "このフォルダは空です", loading: "読み込み中…",
     newFolderPrompt: "新しいフォルダの名前", confirmRevert: "「{name}」の変更を取り消して、元のファイルに戻しますか？",
     confirmRemove: "「{name}」を削除しますか？（元に戻せません）", confirmReplace: "「{name}」を、選んだファイルで置き換えますか？",
-    confirmAdd: "{n} 個のファイルをこのフォルダに入れます（同じ名前は置き換わります）。よろしいですか？",
-    done: "完了しました。次に起動したときから使われます。", failed: "できませんでした: {msg}",
-    note: "変更はこの端末のブラウザ内に保存されます。元のファイル（追加したゲームの中身）は変わりません。",
+    confirmAdd: "{n} 個のファイルをこのフォルダに追加します（同名のファイルは上書きされます）。",
+    done: "完了しました。次回の起動から反映されます。", failed: "失敗しました: {msg}",
+    note: "変更はブラウザ内に保存されます。追加したゲームの元ファイルは変更されません。",
     items: "{n} 項目", path: "場所",
   };
   const EN = {
     title: "Files of {title}", close: "Close", up: "Up", changedOnly: "Show changed only",
-    rootGame: "Game folder", rootUser: "User data (AppData, Documents)", rootOther: "Windows settings (registry etc., advanced)", showOther: "Show Windows settings (advanced)",
+    rootGame: "Game folder", rootUser: "User data (AppData, Documents)", rootOther: "Windows settings (registry etc.)", showOther: "Show Windows settings",
     stOrig: "original", stChanged: "changed", stNew: "new",
     addHere: "Add files", addFolderHere: "Add folder", newFolder: "New folder", zipFolder: "Save as ZIP", top: "Top",
-    save: "Save to device", replace: "Replace with another file", revert: "Undo changes (restore original)", remove: "Delete",
+    save: "Save to device", replace: "Replace with another file", revert: "Undo changes", remove: "Delete",
     cancel: "Cancel", empty: "This folder is empty", loading: "Loading…",
     newFolderPrompt: "Name of the new folder", confirmRevert: "Undo the changes to \"{name}\" and restore the original?",
     confirmRemove: "Delete \"{name}\"? (This cannot be undone.)", confirmReplace: "Replace \"{name}\" with the chosen file?",
-    confirmAdd: "Put {n} files into this folder (files with the same name are replaced)?",
-    done: "Done. It is used from the next start.", failed: "Could not do it: {msg}",
-    note: "Changes are stored in this browser on this device. The original files (the game you added) stay as they were.",
+    confirmAdd: "Add {n} files to this folder (files with the same name are overwritten)?",
+    done: "Done. Takes effect on the next run.", failed: "Failed: {msg}",
+    note: "Changes are stored in the browser. The original game files are not modified.",
     items: "{n} items", path: "Location",
   };
   const fmt = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m));

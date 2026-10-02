@@ -7,17 +7,17 @@
   const EN = /(?:^|;\s*)exe-lang=en/.test(document.cookie) ||
     (!/(?:^|;\s*)exe-lang=/.test(document.cookie) && !(navigator.language || "").toLowerCase().startsWith("ja"));
   const L = EN ? {
-    emu: "Starter program", app: "Your game", wine: "Windows parts (first time only)", failed: "failed", waiting: "waiting", done: "done",
-    booting: "Ready. Starting the program… The first time, Windows sets itself up, which can take a few minutes. A black or blue screen for a while is normal. (Tap to hide)",
-    intro: "Getting ready. The first time only, about 170 MB is downloaded — after that it starts quickly.",
+    emu: "Emulator", app: "Game", wine: "Wine (first run only)", failed: "failed", waiting: "waiting", done: "done",
+    booting: "Starting… The first run initializes Windows and can take a few minutes; a black or blue screen meanwhile is normal. (Tap to hide)",
+    intro: "Loading. The first run downloads about 170 MB.",
     back: "← Back", keys: "Keys", type: "Type", log: "Log", full: "Full", colon: ": ",
-    leave: "Quit the game and go back to the library? Progress you have not saved in the game will be lost.",
+    leave: "Return to the library? Unsaved progress will be lost.",
   } : {
-    emu: "起動プログラム", app: "ゲーム本体", wine: "Windows の部品（初回のみ）", failed: "失敗", waiting: "待機中", done: "完了",
-    booting: "準備ができました。ソフトを起動しています… 初回は Windows の初期設定があるため数分かかることがあります。しばらく黒や青の画面のままでも正常です。（タップで閉じる）",
-    intro: "起動の準備をしています。初回だけ約 170MB をダウンロードします（2回目からは速く始まります）。",
+    emu: "エミュレーター", app: "ゲーム", wine: "Wine（初回のみ）", failed: "失敗", waiting: "待機中", done: "完了",
+    booting: "起動中… 初回は Windows 環境の初期化に数分かかります。黒・青の画面が続いても正常です。（タップで閉じる）",
+    intro: "読み込み中。初回のみ約 170MB をダウンロードします。",
     back: "← 戻る", keys: "キー", type: "文字入力", log: "詳細", full: "全画面", colon: "：",
-    leave: "ゲームを終了してライブラリに戻りますか？ ゲーム内でセーブしていない進行は失われます。",
+    leave: "ライブラリに戻りますか？ セーブしていない進行は失われます。",
   };
 
   // ---------- 読み込みの進み具合表示 ----------
