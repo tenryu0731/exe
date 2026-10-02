@@ -135,6 +135,52 @@ async function readFiles(id, list) {
   return out;
 }
 
+// ソフトが作ったフォルダ（中身が空でも表示するため）。書き出し ZIP と同じ形の名前（C/… など）で返す
+async function changedDirs(id) {
+  const names = dbNames(id);
+  const known = indexedDB.databases ? new Set((await indexedDB.databases()).map((d) => d.name)) : null;
+  const out = [];
+  for (const drive of ["c", "d"]) {
+    if (known && !known.has(names[drive])) continue;
+    const db = await openDb(names[drive]);
+    try {
+      const st = db.transaction(STORE).objectStore(STORE);
+      for (const key of await req(st.getAllKeys())) {
+        if (!key.startsWith(names[drive] + "/")) continue;
+        const v = await req(st.get(key));
+        if (!v || v.contents) continue;
+        const name = exportName(fromNative(key.slice(names[drive].length)), drive);
+        if (name && /^C\/(files|users)\/./.test(name)) out.push(name);
+      }
+    } finally {
+      db.close();
+    }
+  }
+  return out;
+}
+
+// 変更したファイルを消す（元のファイルがあれば、次の起動からそちらが見える）。list は changedFiles の要素
+async function deleteFiles(id, list) {
+  const names = dbNames(id);
+  for (const drive of ["c", "d"]) {
+    const mine = list.filter((f) => f.drive === drive);
+    if (!mine.length) continue;
+    const db = await openDb(names[drive]);
+    try {
+      const tx = db.transaction(STORE, "readwrite");
+      for (const f of mine) tx.objectStore(STORE).delete(f.key);
+      await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
+    } finally {
+      db.close();
+    }
+  }
+}
+
+// フォルダを作る。target.rel の最後の 1 段（ファイル名）を除いたフォルダまでを作る
+function makeDir(id, target) {
+  return writeFiles(id, [Object.assign({ dirsOnly: true }, target)]);
+}
+
 // files: [{ drive, rel（エミュレーター内の絶対パス）, bytes }]
 async function writeFiles(id, files) {
   const names = dbNames(id);
@@ -155,6 +201,7 @@ async function writeFiles(id, files) {
           path += "/" + toNative(parts[i]);
           if (!existing.has(path)) { st.put({ timestamp: now, mode: DIR_MODE }, path); existing.add(path); }
         }
+        if (f.dirsOnly) continue;
         const key = names[drive] + toNative(f.rel);
         st.put({ timestamp: now, mode: FILE_MODE, contents: f.bytes }, key);
         existing.add(key);
@@ -166,5 +213,5 @@ async function writeFiles(id, files) {
   }
 }
 
-window.WineSaves = { changedFiles, readFiles, writeFiles, importKey, toNative, fromNative, DRIVE_C };
+window.WineSaves = { changedFiles, changedDirs, readFiles, writeFiles, deleteFiles, makeDir, importKey, toNative, fromNative, DRIVE_C };
 })();

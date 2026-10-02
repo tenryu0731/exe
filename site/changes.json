@@ -1,5 +1,20 @@
 [
   {
+    "date": "2026-10-02 (8)",
+    "items": [
+      "「試しに動かしてみる」を動作確認用セットに変更（何度押しても 1 つだけ）",
+      "フォルダをそのまま追加できるように（iPhone は iOS 18.4 以降。中で自動的に 1 つのファイルにまとめます）",
+      "セーブデータの「ファイルを管理」画面を追加：パソコンのようにフォルダを開いて、ファイルの保存・置き換え・削除（変更の取り消し）、ファイルやフォルダの追加、新規フォルダ、フォルダごと ZIP で保存",
+      "セーブのバックアップ（書き出し）と復元（取り込み）を分かりやすく"
+    ],
+    "items_en": [
+      "\"Try it now\" now adds the test pack (only once, however often you press it)",
+      "Add a folder as is (iPhone needs iOS 18.4 or later; it is bundled into one file internally)",
+      "New \"Manage files\" screen for save data: open folders like on a computer, save, replace or delete files (undo changes), add files or folders, make folders, save a folder as ZIP",
+      "Clearer save backup (export) and restore (import)"
+    ]
+  },
+  {
     "date": "2026-10-02 (7)",
     "items": [
       "画面の説明を、詳しくない方にも分かる言葉に全面的に書き直し（「Wine エンジン」→「起動の準備（初回のみ）」など）",

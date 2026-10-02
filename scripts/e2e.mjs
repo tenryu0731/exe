@@ -117,6 +117,7 @@ async function testWineDemo(browserType, label) {
   const { browser, page, logs } = await newPage(browserType, label);
   const t0 = Date.now();
   try {
+    await page.locator("details.acc summary").first().click(); // 7-Zip は「使い方のコツ」の中
     await Promise.all([page.waitForURL(/engine\/jit\/boxedwine\.html/, { timeout: 120000 }), page.click("#demo")]);
     let stats = null, best = null;
     const rounds = Number(process.env.E2E_WINE_ROUNDS || 40);

@@ -71,6 +71,7 @@
   .btn.primary, #library button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
   .btn.primary:hover, #library button.primary:hover { background: var(--accent-hover); }
   .btn.link { border-color: transparent; background: none; color: var(--accent); padding-left: 6px; padding-right: 6px; }
+  #library button.primary-soft { border-color: var(--accent); color: var(--accent); }
   #library button.danger { color: var(--danger); border-color: transparent; background: none; }
   #add-status { margin: 10px 0 0; }
   #add-status:empty { display: none; }
@@ -88,6 +89,7 @@
   /* ライブラリ */
   #library > .card { padding: 12px 14px; border-top: 1px solid var(--rule); }
   #library > .card:first-child { border-top: 0; }
+  #library > .card.flash { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); transition: background .4s; }
   .game-title { font-weight: 700; word-break: break-all; line-height: 1.35; }
   .game-meta { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--faint); margin-top: 2px; }
   .kind { font-size: 13px; color: var(--ok); margin-top: 4px; }
@@ -163,7 +165,7 @@
         <div class="actions">
           <button class="btn primary" id="pick" data-i18n="add.files"></button>
           <button class="btn" id="pick-folder" data-i18n="add.folder"></button>
-          <button class="btn link" id="demo" data-i18n="add.demo"></button>
+          <button class="btn link" id="try" data-i18n="add.demo"></button>
         </div>
         <p id="add-status" class="status"></p>
       </div>
@@ -197,6 +199,7 @@
           <li data-i18n="help.4"></li>
           <li data-i18n="help.5"></li>
           <li><span data-i18n="help.testpack"></span> <button class="btn link" id="testpack" data-i18n="add.testpack"></button></li>
+          <li><button class="btn link" id="demo" data-i18n="add.demo7z"></button></li>
         </ul>
       </div>
     </details>
@@ -225,6 +228,7 @@
 <script src="i18n.js"></script>
 <script src="zip.js"></script>
 <script src="wine-saves.js"></script>
+<script src="filemgr.js"></script>
 <script src="launcher.js"></script>
 </body>
 </html>

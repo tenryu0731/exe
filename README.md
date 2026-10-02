@@ -30,6 +30,7 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 | `site/vkeys.js` | 画面上のキーボード（よく使うキーの選択・全キー・テンキー）と全画面表示。Wine と DOS の画面で共用 |
 | `scripts/patch-shell.py` | Boxedwine の Web シェルに上記UIを差し込み、ZIP をメモリ上で複製しないよう改変。ZIP内の時刻をUTCで解釈 |
 | `scripts/prepare-filesystem.py` | Wine 本体の `.update-timestamp` を上記に合わせる（`--prune` で上流 Web 版と同じ規則のファイル削減も可能、既定では行わない） |
+| `site/filemgr.js` | ファイル管理画面（ゲームの元のファイルと、ソフトが作成・変更したファイルを重ねて、フォルダ単位で保存・置き換え・削除・追加） |
 | `site/wine-saves.js` | Wine で動かしたソフトが作成・変更したファイル（Boxedwine がゲームごとの IndexedDB に保存）の書き出しと取り込み |
 | `scripts/add-japanese.py` | Wine 本体に日本語環境を追加：ja_JP ロケール（無いと日本語モード＝コードページ 932 にならない）と、Kosugi フォントを「MS ゴシック」「MS 明朝」「メイリオ」等の名前で引けるようにしたフォント集（無いと日本語が □ になる） |
 | `scripts/testpack/` | 「テスト用セット」（`site/demo/testpack.zip`）のソースと作成スクリプト `build.sh`（mingw-w64 が必要） |
