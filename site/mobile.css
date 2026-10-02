@@ -9,7 +9,9 @@
 }
 html, body { background: var(--m-bg); color: var(--m-text); }
 body { padding-bottom: env(safe-area-inset-bottom); }
-#controls { color: var(--m-text); font-size: 13px; }
+/* Boxedwine 本来の英語の操作欄（マウスポインター固定・コンソール表示）と読み込み表示は使わない。
+   読み込みの進み具合は m-progress で日本語・英語で出す */
+#controls, #loading { display: none !important; }
 #controls button, #controls input { font-size: 13px; }
 #console { display: none; }
 body.m-console #console { display: block; }
@@ -33,10 +35,13 @@ div.emscripten_border { border-color: var(--m-border); }
   background: var(--m-key);
   border: 1px solid var(--m-border);
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 6px 9px;
   text-decoration: none;
   font: inherit;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
+@media (max-width: 400px) { #m-bar { gap: 4px; font-size: 13px; } #m-bar a, #m-bar button { padding: 6px 7px; } }
 #m-bar .m-spacer { flex: 1; }
 
 #m-text {
@@ -61,7 +66,6 @@ div.emscripten_border { border-color: var(--m-border); }
 #m-progress .m-row span { flex: 1 1 auto; min-width: 0; }
 #m-progress progress { flex: 0 0 35%; height: 10px; accent-color: var(--m-key-active); }
 #m-progress .m-note { color: #c9d6e3; }
-#m-version { color: #c9d6e3; font-size: 12px; }
 
 /* 全画面（vkeys.js の全画面ボタン）：ゲーム画面以外を隠して最大にする */
 body.vk-immersive #m-bar, body.vk-immersive #controls, body.vk-immersive #m-progress,

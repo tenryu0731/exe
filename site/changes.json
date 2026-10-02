@@ -1,5 +1,28 @@
 [
   {
+    "date": "2026-10-02 (7)",
+    "items": [
+      "画面の説明を、詳しくない方にも分かる言葉に全面的に書き直し（「Wine エンジン」→「起動の準備（初回のみ）」など）",
+      "「はじめての方へ」の 3 ステップを追加（最初の 1 本を遊ぶまで表示）",
+      "起動画面の英語の表示（マウス固定・コンソール等）を隠し、初回は時間がかかって正常であることを表示",
+      "遊んでいる途中で「戻る」を押したときに確認するように（セーブしていない進行が消えるため）",
+      "ゲームを削除したときにセーブデータが端末に残り続ける不具合を修正（削除前に書き出しを案内）",
+      "iPhone・iPad では使えない「フォルダを選ぶ」ボタンを出さないように",
+      "対応は 32bit のソフトまでに整理（64bit 専用のソフトは起動前に注意を表示）",
+      "エラーの文言を、原因と対処が分かる形に"
+    ],
+    "items_en": [
+      "Rewrote all on-screen text in plain language (e.g. \"Wine engine\" → \"First-time setup\")",
+      "Added a three-step \"Getting started\" guide (shown until you play the first game)",
+      "Hid the English Boxedwine controls on the game screen and explained that the first start can take a while",
+      "Asks before leaving a running game with Back (unsaved progress is lost)",
+      "Fixed saves being left behind on the device after deleting a game (you are told to export first)",
+      "The \"Choose folder\" button is hidden on iPhone and iPad, where it does not work",
+      "Support is now up to 32-bit software (64-bit-only programs show a warning first)",
+      "Error messages now say what went wrong and what to do"
+    ]
+  },
+  {
     "date": "2026-10-02 (6)",
     "items": [
       "よく使うキーの編集画面を作り直し：「✎ 編集」から、ドラッグで並べ替え・× で外す・全キーを押して追加",

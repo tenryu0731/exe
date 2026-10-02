@@ -109,6 +109,10 @@
   .engine-wrap progress { display: block; margin: 0; border-radius: 0; }
   [hidden] { display: none !important; }
 
+  .steps { margin: 0; padding: 12px 14px 12px 34px; font-size: 14.5px; }
+  .steps li { margin: 4px 0; }
+  .steps li::marker { font-weight: 700; color: var(--accent); }
+  ul.help .btn.link { min-height: 32px; padding: 2px 4px; }
   .note { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; font-size: 13.5px; margin: 0 0 22px; }
   details.acc { border-top: 1px solid var(--border); }
   details.acc:last-of-type { border-bottom: 1px solid var(--border); }
@@ -141,6 +145,15 @@
   <main>
     <p class="lede" data-i18n="app.tagline"></p>
 
+    <section id="start-box">
+      <h2 data-i18n="start.title"></h2>
+      <ol class="box steps">
+        <li data-i18n="start.1"></li>
+        <li data-i18n="start.2"></li>
+        <li id="start-3"></li>
+      </ol>
+    </section>
+
     <section>
       <h2 data-i18n="add.title"></h2>
       <div class="box add">
@@ -151,7 +164,6 @@
           <button class="btn primary" id="pick" data-i18n="add.files"></button>
           <button class="btn" id="pick-folder" data-i18n="add.folder"></button>
           <button class="btn link" id="demo" data-i18n="add.demo"></button>
-          <button class="btn link" id="testpack" data-i18n="add.testpack"></button>
         </div>
         <p id="add-status" class="status"></p>
       </div>
@@ -184,6 +196,7 @@
           <li data-i18n="help.3"></li>
           <li data-i18n="help.4"></li>
           <li data-i18n="help.5"></li>
+          <li><span data-i18n="help.testpack"></span> <button class="btn link" id="testpack" data-i18n="add.testpack"></button></li>
         </ul>
       </div>
     </details>
@@ -193,7 +206,7 @@
         <dl class="faq">
           <dt data-i18n="faq.q1"></dt><dd data-i18n="faq.a1"></dd>
           <dt data-i18n="faq.q2"></dt><dd data-i18n="faq.a2"></dd>
-          <dt data-i18n="faq.q3"></dt><dd data-i18n="faq.a3"></dd>
+          <dt data-i18n="faq.q3"></dt><dd id="faq-a3"></dd>
           <dt data-i18n="faq.q4"></dt><dd data-i18n="faq.a4"></dd>
         </dl>
       </div>

@@ -37,13 +37,17 @@
   const en = window.I18N && window.I18N.lang === "en";
   const L = en
     ? { back: "← Back", keys: "Keys", type: "Type", full: "Fullscreen", reading: "Reading the app…", starting: "Starting DOSBox…",
-        running: "Running {name} (DOS) — tap the screen for sound", failed: "Failed: {msg}" }
+        running: "Running {name} (DOS) — tap the screen for sound", failed: "Could not start: {msg}",
+        leave: "Quit and go back to the library? Note: DOS programs do not keep their saves after you leave." }
     : { back: "← 戻る", keys: "キー", type: "文字入力", full: "全画面", reading: "アプリを読み込み中…", starting: "DOSBox を起動中…",
-        running: "{name} を実行中（DOS）— 画面をタップすると音が出ます", failed: "失敗しました: {msg}" };
+        running: "{name} を実行中（DOS）— 画面をタップすると音が出ます", failed: "起動できませんでした: {msg}",
+        leave: "終了してライブラリに戻りますか？ なお DOS のソフトは、戻るとセーブが残りません。" };
   const fmt = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
   const $ = (id) => document.getElementById(id);
   const status = (s, err) => { $("status").textContent = s; $("status").className = err ? "err" : ""; };
   $("back").textContent = L.back;
+  const openedAt = Date.now();
+  $("back").addEventListener("click", (e) => { if (Date.now() - openedAt > 20000 && !confirm(L.leave)) e.preventDefault(); });
   $("toggle-keys").textContent = L.keys;
   $("type-btn").textContent = L.type;
   $("full-btn").textContent = L.full;

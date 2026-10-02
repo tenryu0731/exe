@@ -42,7 +42,7 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 ## 制限
 
 - RPGツクールMV/MZ は Wine を使わず、ゲーム本体（HTML5）をブラウザで直接動かす
-- 64bit の exe は試験的な wine64 エンジン（WebAssembly Memory64 とマルチスレッドが必要。iPhone では動かない見込み）
+- 対象は 32bit のソフトまで。64bit 専用の exe は起動前に注意を出し、試験的な wine64 エンジン（WebAssembly Memory64 とマルチスレッドが必要。iPhone・iPad はブラウザによらず未対応）に回す
 - DOS の exe / com は DOSBox で動かす
 - それ以外の主な対象は軽い 2D の古いゲーム。Direct3D 10 以降は非対応（Boxedwine 26R2 の changeLog より）
 - iPhone のメモリ・CPU 次第で、起動しない／非常に遅いことがある

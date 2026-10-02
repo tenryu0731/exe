@@ -69,6 +69,10 @@ function renderEngine(state) {
   el.className = engineReady ? "status ok" : "status";
   $("engine").classList.toggle("ready", engineReady);
   $("prefetch").hidden = engineReady;
+  $("start-3").textContent = t("start.3", { mb: fsSizeMb });
+  $("faq-a3").textContent = t("faq.a3", { mb: fsSizeMb });
+  // 「はじめての方へ」は、まだ何も遊んでいない（ライブラリが空か準備前）あいだだけ出す
+  $("start-box").hidden = engineReady && loadMeta().length > 0;
 }
 
 $("prefetch").addEventListener("click", () => {
@@ -154,6 +158,26 @@ async function removeHtml5(id) {
     const cache = await caches.open(HTML5_CACHE);
     const prefix = new URL("play/" + encodeURIComponent(id) + "/", location.href).href;
     for (const req of await cache.keys()) if (req.url.startsWith(prefix)) await cache.delete(req);
+  } catch (e) {}
+}
+
+// ゲームを削除するときにセーブも消す。残すと誰も使わないデータが端末に残り続ける
+// （同じゲームを追加し直しても別の ID になるので引き継がれない）
+async function removeSaves(id) {
+  const key = "app/" + encodeURIComponent(id + ".zip");
+  for (const name of ["/root/" + key, "/d_drive/" + key]) {
+    try {
+      await new Promise((resolve) => {
+        const r = indexedDB.deleteDatabase(name);
+        r.onsuccess = r.onerror = r.onblocked = () => resolve();
+      });
+    } catch (e) {}
+  }
+  try {
+    const ns = saveNs(id);
+    for (const k of Object.keys(localStorage)) if (k.startsWith(ns)) localStorage.removeItem(k);
+    localStorage.removeItem("exe-vkeys:" + id);
+    localStorage.removeItem("exe-vkeys:dos:" + id);
   } catch (e) {}
 }
 
@@ -338,6 +362,9 @@ function titleFor(items) {
 
 $("pick").addEventListener("click", () => $("picker").click());
 $("pick-folder").addEventListener("click", () => $("folder-picker").click());
+// iPhone・iPad の Safari はフォルダの選択に対応していないので、ボタンを出さない（ZIP にして選んでもらう）
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+if (IOS) $("pick-folder").hidden = true;
 for (const id of ["picker", "folder-picker"]) {
   $(id).addEventListener("change", (e) => {
     const items = itemsFromFileList(e.target.files);
@@ -430,6 +457,7 @@ function renderLibrary() {
     return;
   }
   for (const g of list) root.appendChild(renderCard(g));
+  renderEngine();
 }
 
 function renderCard(g) {
@@ -483,7 +511,10 @@ function renderCard(g) {
     const sum = document.createElement("summary");
     sum.textContent = t("lib.advanced");
     adv.appendChild(sum);
-    adv.appendChild(selectField("lib.cpu", [["auto", t("lib.cpuAuto")], ["32", t("lib.cpu32")], ["64", t("lib.cpu64")]], g.cpu || "auto", (v) => updateMeta(g.id, { cpu: v })));
+    const advHint = document.createElement("p");
+    advHint.className = "hint";
+    advHint.textContent = t("lib.advancedHint");
+    adv.appendChild(advHint);
     adv.appendChild(selectField("lib.engine", [["jit", t("lib.engineJit")], ["compat", t("lib.engineCompat")]], g.engine, (v) => updateMeta(g.id, { engine: v })));
     adv.appendChild(selectField("lib.resolution", [["", t("lib.auto")], ["640x480", "640x480"], ["800x600", "800x600"], ["1024x768", "1024x768"]], g.resolution, (v) => updateMeta(g.id, { resolution: v })));
     adv.appendChild(selectField("lib.bpp", [["32", "32bit"], ["16", "16bit"], ["8", t("lib.bpp8")]], g.bpp, (v) => updateMeta(g.id, { bpp: v })));
@@ -503,6 +534,7 @@ function renderCard(g) {
     if (!confirm(t("lib.deleteConfirm", { title: g.title }))) return;
     await removeGameFile(g.id);
     await removeHtml5(g.id);
+    await removeSaves(g.id);
     saveMeta(loadMeta().filter((x) => x.id !== g.id));
     renderLibrary();
   }));
@@ -850,17 +882,18 @@ async function targetInfo(g) {
 
 async function start(g, opts = {}) {
   if (opts.desktop) return launch(g, opts);
-  const want = g.cpu || "auto";
   const info = await targetInfo(g);
-  const arch = want === "auto" ? info.arch : want === "64" ? "x64" : "x86";
+  const arch = info.arch;
   if (arch === "os2") return alert(t("err.os2"));
   if (arch === "arm64") return alert(t("err.arm64"));
   if (info.dotnet && !confirm(t("warn.dotnet"))) return;
+  // 64bit 専用のソフトは対象外（32bit まで）。PC の Chrome などでは試験的なエンジンで試せる
   if (arch === "x64") {
+    if (!confirm(t("warn.x64"))) return;
     location.href = "run64.html?id=" + encodeURIComponent(g.id) + "&exe=" + encodeURIComponent(g.exe);
     return;
   }
-  if (arch === "dos" && want === "auto") {
+  if (arch === "dos") {
     location.href = "dos.html?id=" + encodeURIComponent(g.id) + "&exe=" + encodeURIComponent(g.exe);
     return;
   }

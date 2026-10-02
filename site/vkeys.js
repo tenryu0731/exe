@@ -106,7 +106,7 @@
   .vk button.vk-down, .vk button.vk-latched { background: #3f6fd8; border-color: #6f95e8; }
   .vk-quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--vk-w), 1fr)); gap: 5px; }
   .vk-quick button { min-height: var(--vk-h); position: relative; }
-  .vk-quick button.vk-tool { background: #222b34; color: #c9d6e3; font-weight: 500; font-size: 13px; }
+  .vk-quick button.vk-tool { background: #222b34; color: #c9d6e3; font-weight: 500; font-size: 13px; grid-column: span 2; }
   .vk-empty { grid-column: 1 / -1; margin: 6px 2px; font: 400 13px/1.4 system-ui, -apple-system, "Hiragino Sans", sans-serif; color: #c9d6e3; }
 
   /* 編集中 */
