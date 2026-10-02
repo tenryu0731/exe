@@ -1,5 +1,18 @@
 [
   {
+    "date": "2026-10-02 (15)",
+    "items": [
+      "ブラウザで直接動くゲーム（ツクール MV/MZ）の画面上のキーを、Windows・DOS の画面と同じキーボードに統一。よく使うキーの追加・並べ替え・大きさの変更、全キー、全画面が使えます（初期はツクール向けの並びで、決定・取消などの説明付き）",
+      "キーボードを出している間は、ゲーム画面がキーボードに隠れないよう上の領域に収めるように",
+      "ツクールのゲームがスマホで約 980px 幅に縮小表示されていたのを、端末の幅で表示するように"
+    ],
+    "items_en": [
+      "Games that run directly in the browser (RPG Maker MV/MZ) now use the same on-screen keyboard as the Windows and DOS screens: add, reorder and resize quick keys, full keyboard, fullscreen (starts with an RPG Maker layout labeled OK, Cancel, etc.)",
+      "While the keyboard is shown, the game is fitted above it instead of being covered",
+      "RPG Maker games are laid out at the device width instead of a shrunken ~980px page on phones"
+    ]
+  },
+  {
     "date": "2026-10-02 (14)",
     "items": [
       "ツクール MV/MZ: PC から移したセーブが「無いもの」扱いになる問題を修正。ブラウザで動くツクールは、セーブに記録されたタイトルとゲームのタイトルが完全に一致しないとセーブを無視するため、PC 版と同じく確認しないように",

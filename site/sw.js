@@ -213,8 +213,12 @@ function injectIntoIndex(html, id) {
     "var S=window.StorageManager;return typeof id==='number'&&id>0&&!!(S&&S.exists&&S.webStorageKey&&S.exists(id));};" +
     "var a=D.isAnySavefileExists;if(a&&D.maxSavefiles)D.isAnySavefileExists=function(){if(a.call(this))return true;" +
     "for(var i=1;i<=this.maxSavefiles();i++)if(this.isThisGameFile(i))return true;return false;};});" +
-    "})();</script><script src=\"../../play-audio.js\"></script><script src=\"../../play-pad.js\"></script>";
-  return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + tag) : tag + html;
+    "})();</script><script src=\"../../play-audio.js\"></script><script src=\"../../vkeys.js\"></script><script src=\"../../play-pad.js\"></script>";
+  // ツクールの index.html は <meta name="viewport" content="user-scalable=no"> で、スマホでは約 980px 幅で描いて縮小される。
+  // ゲーム画面は窓の大きさに合わせて拡大されるので端末の幅に合わせ、画面上のキーボードが小さくならないようにする
+  const vp = '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">';
+  html = html.replace(/<meta[^>]+name=["']?viewport["']?[^>]*>/gi, "");
+  return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + vp + tag) : vp + tag + html;
 }
 
 async function servePlay(request, id, rawRel) {

@@ -5,8 +5,10 @@
 //  - Shift・Ctrl・Alt・Win：軽くタップすると「次のキー 1 回だけ」押した状態になり、長押しするとその間押しっぱなし
 //  - 全画面：上部のバーなどを隠してゲーム画面を最大にする。対応ブラウザでは本当の全画面にもする
 //
-// 使い方：VKeys.mount({ parent, send(def, down), storageId, lang })。def は KEYS の要素
+// 使い方：VKeys.mount({ parent, send(def, down), storageId, lang, defaults, group, hints })。def は KEYS の要素
 //   { id, label, key, code, keyCode }。DOS 画面は keyCode から DOSBox のキー番号に変換して使う。
+//   defaults: 初期のよく使うキー（省略時は DEFAULT_QUICK）、group: 直近の並びを共有する範囲（省略時は全体）、
+//   hints: { キーid: "決定" } のような、よく使うキーに小さく添える説明
 (function () {
   "use strict";
 
@@ -106,6 +108,7 @@
   .vk button.vk-down, .vk button.vk-latched { background: #3f6fd8; border-color: #6f95e8; }
   .vk-quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--vk-w), 1fr)); gap: 5px; }
   .vk-quick button { min-height: var(--vk-h); position: relative; }
+  .vk-hint { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 500; color: #c9d6e3; overflow: hidden; text-overflow: ellipsis; }
   .vk-quick button.vk-tool { background: #222b34; color: #c9d6e3; font-weight: 500; font-size: 13px; grid-column: span 2; }
   .vk-empty { grid-column: 1 / -1; margin: 6px 2px; font: 400 13px/1.4 system-ui, -apple-system, "Hiragino Sans", sans-serif; color: #c9d6e3; }
 
@@ -146,7 +149,7 @@
     font: 500 13px/1.2 system-ui, -apple-system, "Hiragino Sans", sans-serif; }
   `;
 
-  function mount({ parent, send, storageId, lang }) {
+  function mount({ parent, send, storageId, lang, defaults, group, hints }) {
     const L = T[lang === "en" ? "en" : "ja"];
     if (!document.getElementById("vk-style")) {
       const st = document.createElement("style");
@@ -155,18 +158,20 @@
       document.head.appendChild(st);
     }
     const storeKey = "exe-vkeys:" + (storageId || "default");
+    const sharedKey = "exe-vkeys:default" + (group ? ":" + group : "");
+    const initial = (defaults || DEFAULT_QUICK).filter((id) => BY_ID.has(id));
     const store = {
       get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
       set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
     };
     const load = () => {
-      for (const k of [storeKey, "exe-vkeys:default"]) {
+      for (const k of [storeKey, sharedKey]) {
         const v = store.get(k);
         if (Array.isArray(v)) return v.filter((id) => BY_ID.has(id));
       }
-      return DEFAULT_QUICK.slice();
+      return initial.slice();
     };
-    const save = () => { store.set(storeKey, quick); store.set("exe-vkeys:default", quick); }; // 新しいゲームは直近の並びで始める
+    const save = () => { store.set(storeKey, quick); store.set(sharedKey, quick); }; // 新しいゲームは直近の並びで始める
     let quick = load();
     let editing = false;
     let size = store.get("exe-vkeys-size");
@@ -216,6 +221,12 @@
       b.type = "button";
       b.className = "vk-key";
       b.textContent = def.label;
+      if (inQuick && hints && hints[id]) {
+        const h = document.createElement("span");
+        h.className = "vk-hint";
+        h.textContent = hints[id];
+        b.appendChild(h);
+      }
       b.dataset.id = id;
       if (!inQuick && WIDE[id]) b.style.flexGrow = WIDE[id];
       if (inQuick) {
@@ -330,7 +341,7 @@
         seg.appendChild(b);
       });
       top.append(title, seg,
-        tool(L.reset, () => { quick = DEFAULT_QUICK.slice(); save(); renderQuick(); paintAll(); }),
+        tool(L.reset, () => { quick = initial.slice(); save(); renderQuick(); paintAll(); }),
         tool(L.done, () => setEditing(false), "vk-primary"));
       const hint = document.createElement("p");
       hint.className = "vk-edit-hint";
