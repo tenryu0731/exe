@@ -3,11 +3,13 @@
     "date": "2026-10-02 (14)",
     "items": [
       "ツクール MV/MZ: PC から移したセーブが「無いもの」扱いになる問題を修正。ブラウザで動くツクールは、セーブに記録されたタイトルとゲームのタイトルが完全に一致しないとセーブを無視するため、PC 版と同じく確認しないように",
-      "ブラウザで直接動くゲームのセーブ（.rpgsave）は、PC 版と同じくゲームのフォルダの save フォルダに表示・配置するように（別の「セーブデータ」欄は廃止）。追加したゲームに最初から入っていた save/*.rpgsave も起動時に読み込みます"
+      "ブラウザで直接動くゲームのセーブ（.rpgsave）は、PC 版と同じくゲームのフォルダの save フォルダに表示・配置するように（別の「セーブデータ」欄は廃止）。追加したゲームに最初から入っていた save/*.rpgsave も起動時に読み込みます",
+      "ツクール MV: global.rpgsave が無く file1.rpgsave などだけを入れた場合も、そのセーブを読めるように（タイトル画面の「続きから」も有効に）"
     ],
     "items_en": [
       "RPG Maker MV/MZ: fixed saves copied from a PC being ignored. In the browser, RPG Maker ignores a save unless its stored title exactly matches the game's title; this check is now skipped, as on PC",
-      "Saves (.rpgsave) of games that run in the browser now appear in, and are taken from, the game's save folder as on PC (the separate Save data root is gone). save/*.rpgsave files included with an added game are also loaded at start"
+      "Saves (.rpgsave) of games that run in the browser now appear in, and are taken from, the game's save folder as on PC (the separate Save data root is gone). save/*.rpgsave files included with an added game are also loaded at start",
+      "RPG Maker MV: a save such as file1.rpgsave can be loaded even without global.rpgsave (Continue on the title screen is enabled too)"
     ]
   },
   {

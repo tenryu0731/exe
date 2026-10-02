@@ -208,7 +208,11 @@ function injectIntoIndex(html, id) {
     // 読めるよう、PC 版と同じく「セーブがあれば使える」にする。プラグインの読み込み後（load）に差し替える
     "addEventListener('load',function(){var D=window.DataManager;if(!D||!D.isThisGameFile)return;" +
     "var o=D.isThisGameFile;D.isThisGameFile=function(id){if(o.call(this,id))return true;" +
-    "var gi=this._globalInfo||(this.loadGlobalInfo&&this.loadGlobalInfo());return !!(gi&&gi[id]);};});" +
+    "var gi=this._globalInfo||(this.loadGlobalInfo&&this.loadGlobalInfo());if(gi&&gi[id])return true;" +
+    // global.rpgsave（一覧用の情報）が無くても、セーブ本体があれば読めるようにする（MV）
+    "var S=window.StorageManager;return typeof id==='number'&&id>0&&!!(S&&S.exists&&S.webStorageKey&&S.exists(id));};" +
+    "var a=D.isAnySavefileExists;if(a&&D.maxSavefiles)D.isAnySavefileExists=function(){if(a.call(this))return true;" +
+    "for(var i=1;i<=this.maxSavefiles();i++)if(this.isThisGameFile(i))return true;return false;};});" +
     "})();</script><script src=\"../../play-audio.js\"></script><script src=\"../../play-pad.js\"></script>";
   return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + tag) : tag + html;
 }
