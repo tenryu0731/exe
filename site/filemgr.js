@@ -11,7 +11,7 @@
   const L = () => (window.I18N && I18N.lang === "en" ? EN : JA);
   const JA = {
     title: "{title} のファイル", close: "閉じる", up: "上へ", changedOnly: "変更したものだけ表示",
-    rootGame: "ゲームのフォルダ", rootUser: "ユーザーのデータ（AppData・ドキュメント）", rootOther: "その他（Windows の設定など）",
+    rootGame: "ゲームのフォルダ", rootUser: "ユーザーのデータ（AppData・ドキュメント）", rootOther: "Windows の設定（レジストリなど・詳しい方向け）", showOther: "Windows の設定も表示（詳しい方向け）",
     stOrig: "元のまま", stChanged: "変更あり", stNew: "新しく作成",
     addHere: "ファイルを追加", addFolderHere: "フォルダを追加", newFolder: "新規フォルダ", zipFolder: "ZIP で保存", top: "トップ",
     save: "端末に保存", replace: "別のファイルで置き換え", revert: "変更を取り消す（元に戻す）", remove: "削除",
@@ -25,7 +25,7 @@
   };
   const EN = {
     title: "Files of {title}", close: "Close", up: "Up", changedOnly: "Show changed only",
-    rootGame: "Game folder", rootUser: "User data (AppData, Documents)", rootOther: "Other (Windows settings etc.)",
+    rootGame: "Game folder", rootUser: "User data (AppData, Documents)", rootOther: "Windows settings (registry etc., advanced)", showOther: "Show Windows settings (advanced)",
     stOrig: "original", stChanged: "changed", stNew: "new",
     addHere: "Add files", addFolderHere: "Add folder", newFolder: "New folder", zipFolder: "Save as ZIP", top: "Top",
     save: "Save to device", replace: "Replace with another file", revert: "Undo changes (restore original)", remove: "Delete",
@@ -127,6 +127,8 @@
     let dirs = new Set(); // 変更側で作った空のフォルダ
     let path = []; // [root, ...folders]
     let changedOnly = false;
+    // レジストリなど Windows 側の設定は、ふだん触る必要がないので既定では隠す（バックアップには含まれる）
+    let showOther = false;
 
     async function load() {
       listEl.innerHTML = `<div class="fm-loading">${T.loading}</div>`;
@@ -208,6 +210,15 @@
       cb.addEventListener("change", () => { changedOnly = cb.checked; render(); });
       lab.append(cb, document.createTextNode(T.changedOnly));
       tools.appendChild(lab);
+      if (!path.length) {
+        const lab2 = document.createElement("label");
+        const cb2 = document.createElement("input");
+        cb2.type = "checkbox";
+        cb2.checked = showOther;
+        cb2.addEventListener("change", () => { showOther = cb2.checked; render(); });
+        lab2.append(cb2, document.createTextNode(T.showOther));
+        tools.appendChild(lab2);
+      }
 
       listEl.innerHTML = "";
       if (!path.length) {
@@ -222,6 +233,7 @@
         }
         for (const r of ["game", "user", "other"]) {
           if (r !== "game" && !counts[r]) continue;
+          if (r === "other" && !showOther) continue;
           listEl.appendChild(row(r === "game" ? "🎮" : r === "user" ? "👤" : "⚙️", rootLabel(r), fmt(T.items, { n: counts[r] }),
             changed[r] ? "changed" : null, () => { path = [r]; render(); }));
         }

@@ -3,11 +3,13 @@
     "date": "2026-10-02 (9)",
     "items": [
       "動作確認用セットに「セーブのテスト」ゲームを追加（最初に起動されます）。画面を押して数を増やし、3 つのスロットにセーブ・ロード。セーブは読める文字のファイルなので、「ファイルを管理」での書き出し・置き換え・取り消しを試せます",
-      "7-Zip のデモを削除"
+      "7-Zip のデモを削除",
+      "ファイル管理で「Windows の設定（レジストリなど）」を既定で隠すように（「Windows の設定も表示」で表示。バックアップには含まれます）"
     ],
     "items_en": [
       "The test pack gains a \"save test\" game (started first): tap to count up and save or load three slots. The saves are readable text files, so you can try export, replace and undo in \"Manage files\"",
-      "Removed the 7-Zip demo"
+      "Removed the 7-Zip demo",
+      "The file manager hides \"Windows settings (registry etc.)\" by default (tick \"Show Windows settings\" to see them; backups still include them)"
     ]
   },
   {
