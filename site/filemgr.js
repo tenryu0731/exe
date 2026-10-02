@@ -24,6 +24,11 @@
     done: "完了しました。次回の起動から反映されます。", failed: "失敗しました: {msg}",
     note: "変更はブラウザ内に保存されます。追加したゲームの元ファイルは変更されません。",
     noteHtml5: "変更はそのまま反映され、元に戻せません。セーブはブラウザ内（localStorage）に保存されています。",
+    more: "操作", open: "開く", replaceDir: "フォルダを選んで置き換え", replaceZip: "ZIP を選んで置き換え", removeDir: "フォルダを削除", revertDir: "フォルダの変更を取り消す",
+    confirmReplaceDir: "「{name}」の中身を、選んだ {n} 個のファイルで置き換えますか？\n選んだ中にないファイルは削除されます。",
+    confirmRemoveDir: "「{name}」と中のファイルを削除しますか？（元に戻せません）",
+    confirmRevertDir: "「{name}」の中の変更をすべて取り消して、元の状態に戻しますか？",
+    leftOrig: "完了しました。元からあった {n} 個のファイルは残しています（ゲームの元ファイルは消せません）。",
     badSave: "セーブデータとして扱えないファイルです: {name}（ツクール MV は file1.rpgsave・global.rpgsave・config.rpgsave）",
     items: "{n} 項目", path: "場所",
   };
@@ -41,6 +46,11 @@
     done: "Done. Takes effect on the next run.", failed: "Failed: {msg}",
     note: "Changes are stored in the browser. The original game files are not modified.",
     noteHtml5: "Changes apply directly and cannot be undone. Saves are stored in the browser (localStorage).",
+    more: "Actions", open: "Open", replaceDir: "Replace with a folder", replaceZip: "Replace with a ZIP", removeDir: "Delete folder", revertDir: "Undo changes in folder",
+    confirmReplaceDir: "Replace the contents of \"{name}\" with the {n} chosen files?\nFiles not in your selection are deleted.",
+    confirmRemoveDir: "Delete \"{name}\" and its files? (This cannot be undone.)",
+    confirmRevertDir: "Undo all changes in \"{name}\" and restore the original state?",
+    leftOrig: "Done. {n} original files were kept (original game files cannot be deleted).",
     badSave: "Not usable as save data: {name} (RPG Maker MV uses file1.rpgsave, global.rpgsave, config.rpgsave)",
     items: "{n} items", path: "Location",
   };
@@ -69,6 +79,11 @@
   .fm-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--rule, #e3e3de);
     background: var(--surface, #fff); text-align: left; cursor: pointer; min-height: 52px; }
   .fm-row:hover { background: var(--sunken, #efefec); }
+  .fm-item { display: flex; align-items: stretch; }
+  .fm-item .fm-row { flex: 1; min-width: 0; }
+  .fm-more { flex: 0 0 52px; border: 0; border-bottom: 1px solid var(--rule, #e3e3de); border-left: 1px solid var(--rule, #e3e3de);
+    background: var(--surface, #fff); color: var(--muted, #4a4d52); font-size: 20px; cursor: pointer; }
+  .fm-more:hover { background: var(--sunken, #efefec); }
   .fm-icon { width: 28px; flex: 0 0 28px; text-align: center; font-size: 20px; }
   .fm-name { flex: 1; min-width: 0; word-break: break-all; }
   .fm-meta { flex: 0 0 auto; text-align: right; font-size: 12.5px; color: var(--faint, #63676d); }
@@ -142,6 +157,7 @@
       },
       write: (list) => W.writeFiles(g.id, list.map((x) => Object.assign({ bytes: x.bytes }, target(x.name)))),
       mkdir: (name) => W.makeDir(g.id, target(name + "/x")),
+      rmdir: (name) => W.deleteDirs(g.id, toW(name)),
       canReplace: (it) => split(it.name).root !== "other" || it.name === "other/registry/user.reg",
       canRevert: (it) => it.state === "changed",
       canRemove: (it) => it.state === "new",
@@ -245,6 +261,7 @@
         await writeIndex(c, idx);
       },
       async mkdir(name) { madeDirs.add(name); },
+      async rmdir(name) { for (const d of [...madeDirs]) if (d === name || d.startsWith(name + "/")) madeDirs.delete(d); },
       canReplace: () => true,
       canRevert: () => false,
       canRemove: () => true,
@@ -390,7 +407,7 @@
         tools.append(btn("↑ " + T.up, () => { path.pop(); render(); }));
         if (!r.readOnly) tools.append(btn("＋ " + T.addHere, () => pickFiles(false)));
         if (!r.readOnly && !r.flat) tools.append(btn("＋ " + T.addFolderHere, () => pickFiles(true)), btn("📁 " + T.newFolder, newFolder));
-        tools.append(btn("⤓ " + T.zipFolder, zipFolder));
+        tools.append(btn("⤓ " + T.zipFolder, () => zipFolder(path.join("/"), path.length > 1 ? path[path.length - 1] : rootInfo(path[0]).label)));
       }
       if (B.tracksChanges) tools.appendChild(check(T.changedOnly, changedOnly, (v) => { changedOnly = v; }));
       if (!path.length && B.roots.some((r) => r.optional)) tools.appendChild(check(T.showOther, showOther, (v) => { showOther = v; }));
@@ -407,7 +424,9 @@
             if (it.state !== "orig") changed = true;
           }
           if ((!r.always && !n) || (r.optional && !showOther)) continue;
-          listEl.appendChild(row(r.icon, r.label, fmt(T.items, { n }), changed ? "changed" : null, () => { path = [r.id]; render(); }));
+          const go = () => { path = [r.id]; render(); };
+          listEl.appendChild(withMore(row(r.icon, r.label, fmt(T.items, { n }), changed ? "changed" : null, go),
+            r.readOnly ? null : () => folderSheet(r.id, r.label, n, go)));
         }
         return;
       }
@@ -417,7 +436,10 @@
         return;
       }
       for (const [name, f] of [...folders].sort((a, b) => a[0].localeCompare(b[0]))) {
-        listEl.appendChild(row("📁", name, fmt(T.items, { n: f.count }), f.changed ? "changed" : null, () => { path = path.concat(name); render(); }));
+        const go = () => { path = path.concat(name); render(); };
+        const ro = rootInfo(path[0]).readOnly;
+        listEl.appendChild(withMore(row("📁", name, fmt(T.items, { n: f.count }), f.changed ? "changed" : null, go),
+          ro ? null : () => folderSheet(path.concat(name).join("/"), name, f.count, go)));
       }
       for (const f of files) {
         const r = row(iconFor(f.base), f.base, size(f.size), f.state === "orig" ? null : f.state, () => fileSheet(f));
@@ -457,6 +479,20 @@
       b.querySelector(".fm-meta").textContent = meta;
       b.addEventListener("click", onClick);
       return b;
+    }
+    // 行の右端に「⋯」（フォルダの操作）を付ける
+    function withMore(rowEl, onMore) {
+      if (!onMore) return rowEl;
+      const wrap = document.createElement("div");
+      wrap.className = "fm-item";
+      const m = document.createElement("button");
+      m.type = "button";
+      m.className = "fm-more";
+      m.textContent = "⋯";
+      m.setAttribute("aria-label", T.more);
+      m.addEventListener("click", onMore);
+      wrap.append(rowEl, m);
+      return wrap;
     }
     function btn(label, onClick, cls) {
       const b = document.createElement("button");
@@ -517,6 +553,92 @@
       bg.appendChild(sh);
       el.appendChild(bg);
     }
+    // ---- フォルダ 1 つの操作 ----
+    // prefix: "<場所>/<パス>"（場所そのものなら "<場所>"）
+    function folderSheet(prefix, label, count, go) {
+      const bg = document.createElement("div");
+      bg.className = "fm-sheet-bg";
+      const sh = document.createElement("div");
+      sh.className = "fm-sheet";
+      const h = document.createElement("h4");
+      h.textContent = "📁 " + label;
+      const p = document.createElement("p");
+      p.textContent = fmt(T.items, { n: count }) + (path.length ? " · " + T.path + ": " + displayPath() : "");
+      const closeSheet = () => bg.remove();
+      bg.addEventListener("click", (e) => { if (e.target === bg) closeSheet(); });
+      const inside = [...items.values()].filter((it) => it.name.startsWith(prefix + "/"));
+      sh.append(h, p, btn("📂 " + T.open, () => { closeSheet(); go(); }, "fm-primary"),
+        btn("⤓ " + T.zipFolder, () => { closeSheet(); zipFolder(prefix, label); }));
+      const flat = rootInfo(prefix.split("/")[0]).flat;
+      if ("webkitdirectory" in document.createElement("input") && !flat) {
+        sh.append(btn("⇄ " + T.replaceDir, () => {
+          closeSheet();
+          pick(true, true, async (files) => {
+            // 選んだフォルダ自体の名前（webkitRelativePath の先頭）は外す
+            const list = files.filter((f) => !isJunkPath(f.webkitRelativePath || f.name)).map((f) => ({
+              rel: (f.webkitRelativePath || f.name).split("/").slice(1).join("/") || f.name,
+              get: async () => new Uint8Array(await f.arrayBuffer()),
+            }));
+            await replaceFolder(prefix, label, list);
+          });
+        }));
+      }
+      sh.append(btn("⇄ " + T.replaceZip, () => {
+        closeSheet();
+        pick(false, false, async (files) => {
+          if (!files.length) return;
+          try {
+            const zip = files[0];
+            const entries = (await readZipIndex(zip)).entries.filter((e) => !e.dir && !isJunkPath(e.name));
+            // ZIP の中身が 1 つのフォルダにまとまっていれば、そのフォルダの中身を使う
+            const tops = new Set(entries.map((e) => e.name.split("/")[0]));
+            const strip = tops.size === 1 && entries.every((e) => e.name.includes("/")) ? [...tops][0].length + 1 : 0;
+            await replaceFolder(prefix, label, entries.map((e) => ({ rel: e.name.slice(strip), get: () => zipEntryBytes(zip, e) })));
+          } catch (e) {
+            say(fmt(T.failed, { msg: e.message }), true);
+          }
+        });
+      }));
+      // 消せるもの（追加・変更したもの）があれば。元のファイルを含むフォルダは「変更を取り消す」
+      if (inside.some((it) => B.canRemove(it) || B.canRevert(it)) || (!inside.length && path.length)) {
+        const hasOrig = inside.some((it) => !B.canRemove(it));
+        sh.append(btn(hasOrig ? "↺ " + T.revertDir : "🗑 " + T.removeDir, async () => {
+          closeSheet();
+          if (!confirm(fmt(hasOrig ? T.confirmRevertDir : T.confirmRemoveDir, { name: label }))) return;
+          await apply(async () => {
+            for (const it of inside) if (B.canRemove(it) || B.canRevert(it)) await B.remove(it);
+            if (!hasOrig) await B.rmdir(prefix);
+          });
+        }, hasOrig ? "" : "fm-danger"));
+      }
+      sh.append(btn(T.cancel, closeSheet));
+      bg.appendChild(sh);
+      el.appendChild(bg);
+    }
+
+    // フォルダの中身を list（{ rel, get }）で置き換える。list にないものは消す（元のファイルは消せないので残す）
+    async function replaceFolder(prefix, label, list) {
+      list = list.filter((x) => x.rel);
+      if (!list.length || !confirm(fmt(T.confirmReplaceDir, { name: label, n: list.length }))) return;
+      let kept = 0;
+      try {
+        const out = [];
+        for (const x of list) out.push({ name: prefix + "/" + x.rel, bytes: await x.get() });
+        const keep = new Set(out.map((x) => x.name));
+        await B.write(out);
+        for (const it of [...items.values()]) {
+          if (!it.name.startsWith(prefix + "/") || keep.has(it.name)) continue;
+          if (B.canRemove(it) || B.canRevert(it)) await B.remove(it);
+          if (!B.canRemove(it)) kept++;
+        }
+        await load();
+        say(kept ? fmt(T.leftOrig, { n: kept }) : T.done);
+      } catch (e) {
+        await load();
+        say(fmt(T.failed, { msg: e.message }), true);
+      }
+    }
+
     function displayPath() {
       const [root, ...sub] = path;
       return [rootInfo(root).label].concat(sub).join(" › ");
@@ -560,8 +682,8 @@
       if (!name) return;
       await apply(() => B.mkdir(here(name)));
     }
-    async function zipFolder() {
-      const prefix = path.join("/") + "/";
+    async function zipFolder(dir, label) {
+      const prefix = dir + "/";
       const out = [];
       try {
         for (const [name, it] of items) {
@@ -569,8 +691,7 @@
           out.push(await B.zipItem(it, name.slice(prefix.length)));
         }
         if (!out.length) return say(T.empty, true);
-        const base = path.length > 1 ? path[path.length - 1] : rootInfo(path[0]).label;
-        await offerFile(await buildZip(out), g.title + " - " + base + ".zip");
+        await offerFile(await buildZip(out), g.title + " - " + label + ".zip");
       } catch (e) {
         say(fmt(T.failed, { msg: e.message }), true);
       }

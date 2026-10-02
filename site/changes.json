@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-10-02 (13)",
+    "items": [
+      "ファイル画面のフォルダに「⋯」を追加。フォルダごとの置き換え（フォルダまたは ZIP を選ぶ）・ZIP で保存・削除（元のファイルを含むフォルダは「変更を取り消す」）ができるように"
+    ],
+    "items_en": [
+      "Folders in the Files screen now have a \"⋯\" menu: replace the whole folder (pick a folder or a ZIP), save as ZIP, or delete (\"Undo changes\" for folders containing original files)"
+    ]
+  },
+  {
     "date": "2026-10-02 (12)",
     "items": [
       "「セーブデータ」欄（変更分だけの ZIP 保存・復元）を廃止し、カードに「⤓ 全部ダウンロード」を追加。元のファイルに変更・セーブを重ねた今の状態のゲームを、まるごと ZIP で保存します（ゲームフォルダ外に書かれたファイルは _users、ツクール MV のセーブは save フォルダ）",

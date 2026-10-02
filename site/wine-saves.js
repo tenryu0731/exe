@@ -176,6 +176,28 @@ async function deleteFiles(id, list) {
   }
 }
 
+// 空のフォルダ（ファイルの入っていない項目）を消す。prefix は書き出し ZIP と同じ形の名前（C/files/… など）
+async function deleteDirs(id, prefix) {
+  const names = dbNames(id);
+  for (const drive of ["c", "d"]) {
+    const db = await openDb(names[drive]);
+    try {
+      const tx = db.transaction(STORE, "readwrite");
+      const st = tx.objectStore(STORE);
+      for (const key of await req(st.getAllKeys())) {
+        if (!key.startsWith(names[drive] + "/")) continue;
+        const v = await req(st.get(key));
+        if (!v || v.contents) continue;
+        const name = exportName(fromNative(key.slice(names[drive].length)), drive);
+        if (name && (name === prefix || name.startsWith(prefix + "/"))) st.delete(key);
+      }
+      await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
+    } finally {
+      db.close();
+    }
+  }
+}
+
 // フォルダを作る。target.rel の最後の 1 段（ファイル名）を除いたフォルダまでを作る
 function makeDir(id, target) {
   return writeFiles(id, [Object.assign({ dirsOnly: true }, target)]);
@@ -213,5 +235,5 @@ async function writeFiles(id, files) {
   }
 }
 
-window.WineSaves = { changedFiles, changedDirs, readFiles, writeFiles, deleteFiles, makeDir, importKey, toNative, fromNative, DRIVE_C };
+window.WineSaves = { changedFiles, changedDirs, deleteDirs, readFiles, writeFiles, deleteFiles, makeDir, importKey, toNative, fromNative, DRIVE_C };
 })();
