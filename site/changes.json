@@ -1,5 +1,22 @@
 [
   {
+    "date": "2026-10-02 (5)",
+    "items": [
+      "画面のキーボードを強化：「全キー」で PC のキーボード一式（F1〜F12・英数字・記号・Ins/Del/Home/End/PgUp/PgDn・テンキー）",
+      "よく使うキーを自分で選べるように（「全キー」→「並べ替え」で押したキーが下の列に並ぶ。ゲームごとに保存）",
+      "Shift・Ctrl・Alt は軽くタップで次のキー 1 回だけ、長押しで押しっぱなし",
+      "「全画面」ボタン：上部のバーなどを隠してゲーム画面を最大に（対応ブラウザでは本当の全画面）",
+      "DOS の画面も同じキーボードと全画面に対応"
+    ],
+    "items_en": [
+      "Better on-screen keyboard: \"All keys\" opens a full PC keyboard (F1–F12, letters, symbols, Ins/Del/Home/End/PgUp/PgDn, numeric keypad)",
+      "Choose your own quick keys (All keys → Customize; saved per game)",
+      "Shift, Ctrl and Alt: tap for the next key only, hold to keep them down",
+      "Fullscreen button hides the bars and makes the game as large as possible (real fullscreen where the browser supports it)",
+      "The DOS screen uses the same keyboard and fullscreen"
+    ]
+  },
+  {
     "date": "2026-10-02 (4)",
     "items": [
       "「テスト用セットを追加」ボタン：日本語・セーブ・DirectX、入力（タッチ・キー・文字）、動きと音、コンソール、バッチ、64bit、DOS を 1 つずつ試せる小さな exe 集",

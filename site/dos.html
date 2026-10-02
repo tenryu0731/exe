@@ -18,22 +18,17 @@
   #status.err { color: var(--err); }
   #screen { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; touch-action: none; }
   canvas { image-rendering: pixelated; outline: none; }
-  #keys { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; padding: 6px 8px max(8px, env(safe-area-inset-bottom));
-    background: var(--panel); border-top: 1px solid var(--border); user-select: none; -webkit-user-select: none; }
-  #keys.hidden { display: none; }
-  #keys button { min-height: 42px; color: var(--text); background: var(--key); border: 1px solid var(--border); border-radius: 8px;
-    font: 600 15px/1 system-ui, sans-serif; touch-action: none; -webkit-tap-highlight-color: transparent; }
-  #keys button.on { background: var(--key-on); }
+  body.vk-immersive #bar { display: none; }
   #type { position: fixed; left: -1000px; top: 0; width: 10px; height: 10px; opacity: 0; }
 </style>
 </head>
 <body>
-  <div id="bar"><a href="./" id="back"></a><button id="toggle-keys"></button><button id="type-btn"></button><span id="status"></span></div>
+  <div id="bar"><a href="./" id="back"></a><button id="toggle-keys"></button><button id="type-btn"></button><button id="full-btn"></button><span id="status"></span></div>
   <div id="screen"><canvas id="canvas" tabindex="0" width="640" height="400"></canvas></div>
-  <div id="keys"></div>
   <input id="type" type="text" autocapitalize="off" autocomplete="off" spellcheck="false">
 <script src="i18n.js"></script>
 <script src="zip.js"></script>
+<script src="vkeys.js"></script>
 <script>
 "use strict";
 // DOS の exe / com を DOSBox（js-dos の emulators、vendor/js-dos、GPL-2.0）で動かす。
@@ -41,9 +36,9 @@
 (async function () {
   const en = window.I18N && window.I18N.lang === "en";
   const L = en
-    ? { back: "← Back", keys: "Keys", type: "Type", reading: "Reading the app…", starting: "Starting DOSBox…",
+    ? { back: "← Back", keys: "Keys", type: "Type", full: "Fullscreen", reading: "Reading the app…", starting: "Starting DOSBox…",
         running: "Running {name} (DOS) — tap the screen for sound", failed: "Failed: {msg}" }
-    : { back: "← 戻る", keys: "キー", type: "文字入力", reading: "アプリを読み込み中…", starting: "DOSBox を起動中…",
+    : { back: "← 戻る", keys: "キー", type: "文字入力", full: "全画面", reading: "アプリを読み込み中…", starting: "DOSBox を起動中…",
         running: "{name} を実行中（DOS）— 画面をタップすると音が出ます", failed: "失敗しました: {msg}" };
   const fmt = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
   const $ = (id) => document.getElementById(id);
@@ -51,6 +46,7 @@
   $("back").textContent = L.back;
   $("toggle-keys").textContent = L.keys;
   $("type-btn").textContent = L.type;
+  $("full-btn").textContent = L.full;
 
   // DOM の keyCode → DOSBox（GLFW 方式）のキーコード
   const GLFW = { 8: 259, 9: 258, 13: 257, 16: 340, 17: 341, 18: 342, 19: 284, 20: 280, 27: 256, 32: 32, 33: 266, 34: 267,
@@ -59,6 +55,9 @@
   for (let c = 48; c <= 57; c++) GLFW[c] = c;
   for (let c = 65; c <= 90; c++) GLFW[c] = c;
   for (let i = 0; i < 12; i++) GLFW[112 + i] = 290 + i;
+  // テンキー（DOM の keyCode 96〜111）・NumLock・Win
+  for (let i = 0; i <= 9; i++) GLFW[96 + i] = 320 + i;
+  Object.assign(GLFW, { 110: 330, 111: 331, 106: 332, 109: 333, 107: 334, 144: 282, 91: 343 });
 
   let ci = null;
   const loadScript = (src) => new Promise((res, rej) => {
@@ -166,24 +165,23 @@
     canvas.addEventListener("pointercancel", up);
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-    // 仮想キー
-    const KEYS = [["Esc", 27], ["↑", 38], ["Enter", 13], ["Y", 89], ["N", 78], ["Space", 32],
-      ["←", 37], ["↓", 40], ["→", 39], ["Shift", 16], ["Ctrl", 17], ["Alt", 18],
-      ["1", 49], ["2", 50], ["3", 51], ["F1", 112], ["BS", 8], ["Tab", 9]];
-    const pad = $("keys");
-    for (const [label, code] of KEYS) {
-      const b = document.createElement("button");
-      b.textContent = label;
-      const down = (e) => { e.preventDefault(); startAudio(); b.classList.add("on"); send(code, true); };
-      const release = (e) => { e.preventDefault(); if (b.classList.contains("on")) { b.classList.remove("on"); send(code, false); } };
-      b.addEventListener("pointerdown", down);
-      b.addEventListener("pointerup", release);
-      b.addEventListener("pointercancel", release);
-      b.addEventListener("pointerleave", release);
-      pad.appendChild(b);
-    }
-    if (!matchMedia("(pointer: coarse)").matches) pad.classList.add("hidden");
-    $("toggle-keys").addEventListener("click", () => { pad.classList.toggle("hidden"); fit(); });
+    // 画面上のキーボード（vkeys.js）。よく使うキーはゲームごとに選べる
+    const keypad = VKeys.mount({
+      parent: document.body,
+      storageId: "dos:" + params.get("id"),
+      lang: en ? "en" : "ja",
+      send: (def, down) => {
+        if (down) startAudio();
+        // テンキーの Enter は DOSBox 側の番号が別（335）
+        const k = def.code === "NumpadEnter" ? 335 : GLFW[def.keyCode];
+        if (k) ci.sendKeyEvent(k, down);
+      },
+    });
+    const full = VKeys.fullscreen({ lang: en ? "en" : "ja", onToggleKeys: () => { keypad.toggle(); fit(); } });
+    if (!matchMedia("(pointer: coarse)").matches) keypad.hide(true);
+    $("toggle-keys").addEventListener("click", () => { keypad.toggle(); fit(); });
+    $("full-btn").addEventListener("click", () => full.enter());
+    window.addEventListener("resize", fit);
     fit();
     const type = $("type");
     $("type-btn").addEventListener("click", () => type.focus());

@@ -26,7 +26,8 @@ iPhone / iPad のブラウザで Windows の .exe ゲームを動かすための
 | `site/index.html` | ランチャー（ゲーム追加・一覧・起動設定）。ゲームは OPFS（ブラウザ内ファイル領域）に保存 |
 | `site/sw.js` | Service Worker。ゲームZIPの配信、分割した Wine ファイルシステムの結合とキャッシュ、COOP/COEP 付与 |
 | `site/store-worker.js` | ゲームファイルを少しずつ OPFS へ書き込む Worker（大きなZIP対応・日本語ファイル名の変換）|
-| `site/mobile.js`, `mobile.css` | エミュレーター画面に注入するスマホ用UI（仮想キー等） |
+| `site/mobile.js`, `mobile.css` | エミュレーター画面に注入するスマホ用UI（上部バー・進み具合・全画面） |
+| `site/vkeys.js` | 画面上のキーボード（よく使うキーの選択・全キー・テンキー）と全画面表示。Wine と DOS の画面で共用 |
 | `scripts/patch-shell.py` | Boxedwine の Web シェルに上記UIを差し込み、ZIP をメモリ上で複製しないよう改変。ZIP内の時刻をUTCで解釈 |
 | `scripts/prepare-filesystem.py` | Wine 本体の `.update-timestamp` を上記に合わせる（`--prune` で上流 Web 版と同じ規則のファイル削減も可能、既定では行わない） |
 | `site/wine-saves.js` | Wine で動かしたソフトが作成・変更したファイル（Boxedwine がゲームごとの IndexedDB に保存）の書き出しと取り込み |

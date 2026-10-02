@@ -39,29 +39,6 @@ div.emscripten_border { border-color: var(--m-border); }
 }
 #m-bar .m-spacer { flex: 1; }
 
-#m-keys {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 6px;
-  padding: 6px 8px 8px;
-  background: var(--m-panel);
-  border-top: 1px solid var(--m-border);
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-}
-#m-keys.m-hidden { display: none; }
-#m-keys button {
-  min-height: 44px;
-  color: var(--m-text);
-  background: var(--m-key);
-  border: 1px solid var(--m-border);
-  border-radius: 8px;
-  font: 600 15px/1 system-ui, -apple-system, sans-serif;
-  -webkit-tap-highlight-color: transparent;
-}
-#m-keys button.m-down, #m-keys button.m-latched { background: var(--m-key-active); }
 #m-text {
   position: fixed;
   left: -1000px;
@@ -85,3 +62,9 @@ div.emscripten_border { border-color: var(--m-border); }
 #m-progress progress { flex: 0 0 35%; height: 10px; accent-color: var(--m-key-active); }
 #m-progress .m-note { color: #c9d6e3; }
 #m-version { color: #c9d6e3; font-size: 12px; }
+
+/* 全画面（vkeys.js の全画面ボタン）：ゲーム画面以外を隠して最大にする */
+body.vk-immersive #m-bar, body.vk-immersive #controls, body.vk-immersive #m-progress,
+body.vk-immersive #loading, body.vk-immersive #console { display: none !important; }
+body.vk-immersive #dropzone { padding: 0; background: #000; }
+body.vk-immersive div.emscripten_border { border: 0; }

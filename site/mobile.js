@@ -9,11 +9,11 @@
   const L = EN ? {
     emu: "Emulator", app: "App", wine: "Wine", failed: "failed", waiting: "waiting", done: "done",
     booting: "Loaded. Starting Wine (the first start can take a few minutes). Tap to close.",
-    back: "← Back", keys: "Keys", type: "Type", log: "Log", colon: ": ",
+    back: "← Back", keys: "Keys", type: "Type", log: "Log", full: "Fullscreen", colon: ": ",
   } : {
     emu: "エミュレーター", app: "ゲーム", wine: "Wine 本体", failed: "失敗", waiting: "待機中", done: "完了",
     booting: "読み込み完了。Wine を起動中です（初回は数分かかることがあります）。タップで閉じる",
-    back: "← 戻る", keys: "キー", type: "文字入力", log: "ログ", colon: "：",
+    back: "← 戻る", keys: "キー", type: "文字入力", log: "ログ", full: "全画面", colon: "：",
   };
 
   // ---------- 読み込みの進み具合表示 ----------
@@ -121,28 +121,6 @@
     return res;
   };
 
-  // [表示名, KeyboardEvent.key, KeyboardEvent.code, keyCode, ラッチ式(修飾キー)]
-  const KEYS = [
-    ["Esc", "Escape", "Escape", 27],
-    ["↑", "ArrowUp", "ArrowUp", 38],
-    ["Enter", "Enter", "Enter", 13],
-    ["Z", "z", "KeyZ", 90],
-    ["X", "x", "KeyX", 88],
-    ["C", "c", "KeyC", 67],
-    ["←", "ArrowLeft", "ArrowLeft", 37],
-    ["↓", "ArrowDown", "ArrowDown", 40],
-    ["→", "ArrowRight", "ArrowRight", 39],
-    ["Space", " ", "Space", 32],
-    ["Shift", "Shift", "ShiftLeft", 16, true],
-    ["Ctrl", "Control", "ControlLeft", 17, true],
-    ["Tab", "Tab", "Tab", 9],
-    ["Alt", "Alt", "AltLeft", 18, true],
-    ["BS", "Backspace", "Backspace", 8],
-    ["F1", "F1", "F1", 112],
-    ["F5", "F5", "F5", 116],
-    ["F12", "F12", "F12", 123],
-  ];
-
   function keyEvent(type, key, code, keyCode) {
     const ev = new KeyboardEvent(type, { key, code, bubbles: true, cancelable: true });
     for (const prop of ["keyCode", "which"]) {
@@ -168,6 +146,16 @@
     return null;
   }
 
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = src;
+      el.onload = resolve;
+      el.onerror = () => reject(new Error("load " + src));
+      document.head.appendChild(el);
+    });
+  }
+
   function build() {
     const app = document.getElementById("app") || document.body;
 
@@ -177,44 +165,26 @@
       '<a href="../../">' + L.back + "</a>" +
       '<button type="button" id="m-toggle-keys">' + L.keys + "</button>" +
       '<button type="button" id="m-type">' + L.type + "</button>" +
+      '<button type="button" id="m-full">' + L.full + "</button>" +
       '<span class="m-spacer"></span>' +
       '<span id="m-version"></span>' +
       '<button type="button" id="m-log">' + L.log + "</button>";
     document.body.insertBefore(bar, document.body.firstChild);
 
-    const keys = document.createElement("div");
-    keys.id = "m-keys";
-    for (const [label, key, code, keyCode, latch] of KEYS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.textContent = label;
-      if (latch) {
-        b.addEventListener("click", (e) => {
-          e.preventDefault();
-          const on = !b.classList.contains("m-latched");
-          b.classList.toggle("m-latched", on);
-          send(on ? "keydown" : "keyup", key, code, keyCode);
-        });
-      } else {
-        const down = (e) => {
-          e.preventDefault();
-          b.classList.add("m-down");
-          send("keydown", key, code, keyCode);
-        };
-        const up = (e) => {
-          e.preventDefault();
-          if (!b.classList.contains("m-down")) return;
-          b.classList.remove("m-down");
-          send("keyup", key, code, keyCode);
-        };
-        b.addEventListener("pointerdown", down);
-        b.addEventListener("pointerup", up);
-        b.addEventListener("pointercancel", up);
-        b.addEventListener("pointerleave", up);
-      }
-      keys.appendChild(b);
-    }
-    app.appendChild(keys);
+    // 画面上のキーボード（vkeys.js）。よく使うキーはゲームごとに選べる
+    const appId = new URLSearchParams(location.search).get("app") || "default";
+    const keys = { toggle() {}, hide() {} };
+    const fs = { enter() {} };
+    loadScript("../../vkeys.js").then(() => {
+      Object.assign(keys, VKeys.mount({
+        parent: app,
+        storageId: appId,
+        lang: EN ? "en" : "ja",
+        send: (def, down) => send(down ? "keydown" : "keyup", def.key, def.code, def.keyCode),
+      }));
+      Object.assign(fs, VKeys.fullscreen({ lang: EN ? "en" : "ja", onToggleKeys: () => keys.toggle() }));
+      window.dispatchEvent(new Event("resize"));
+    });
 
     const text = document.createElement("input");
     text.id = "m-text";
@@ -250,10 +220,8 @@
       .then((v) => { document.getElementById("m-version").textContent = "#" + v.build; })
       .catch(() => {});
 
-    document.getElementById("m-toggle-keys").addEventListener("click", () => {
-      keys.classList.toggle("m-hidden");
-      window.dispatchEvent(new Event("resize"));
-    });
+    document.getElementById("m-toggle-keys").addEventListener("click", () => keys.toggle());
+    document.getElementById("m-full").addEventListener("click", () => fs.enter());
     document.getElementById("m-type").addEventListener("click", () => text.focus());
     document.getElementById("m-log").addEventListener("click", () => {
       document.body.classList.toggle("m-console");
