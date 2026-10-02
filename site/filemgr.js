@@ -105,6 +105,7 @@
     };
     let file = null;
     let index = null;
+    const readW = async (it) => (await W.readFiles(g.id, [it.w]))[0].bytes;
     return {
       // optional: 既定では隠す（レジストリなど、ふだん触る必要がない。ZIP での保存には含まれる）
       roots: [
@@ -114,6 +115,8 @@
       ],
       note: T.note,
       tracksChanges: true,
+      // 「全部ダウンロード」：ゲームのフォルダはそのまま、C:\users に書かれたものは _users/ に入れる
+      allPath: (name) => { const { root, rest } = split(name); return root === "game" ? rest : root === "user" ? "_users/" + rest : null; },
       async load() {
         if (!file) {
           try { file = await gameFile(g.id); index = await readZipIndex(file); } catch (e) { index = { entries: [] }; }
@@ -131,10 +134,11 @@
         }
         return { items, dirs: new Set((await W.changedDirs(g.id)).map(toFm)) };
       },
+      // buildZip（zip.js）に渡す形。元のファイルは圧縮されたまま写す
+      zipItem: async (it, name) => (it.state === "orig" ? { name, file, entry: it.entry } : { name, bytes: await readW(it) }),
       async read(it) {
         if (it.state === "orig") return zipEntryBytes(file, it.entry);
-        const [one] = await W.readFiles(g.id, [it.w]);
-        return one.bytes;
+        return readW(it);
       },
       write: (list) => W.writeFiles(g.id, list.map((x) => Object.assign({ bytes: x.bytes }, target(x.name)))),
       mkdir: (name) => W.makeDir(g.id, target(name + "/x")),
@@ -187,6 +191,11 @@
       ],
       note: T.noteHtml5,
       tracksChanges: false,
+      // 「全部ダウンロード」：PC 版と同じく、セーブは save/ に入れる
+      allPath: (name) => { const { root, rest } = split(name); return root === "game" ? rest : "save/" + rest; },
+      zipItem: async (it, name) => (it.key !== undefined
+        ? { name, bytes: new TextEncoder().encode(localStorage.getItem(ns + it.key) || "") }
+        : { name, get: async () => { const r = await (await cache()).match(url(it.rel)); if (!r) throw new Error("not found: " + it.rel); return r.blob(); } }),
       async load() {
         const items = new Map();
         for (const rel of Object.values(await readIndex(await cache()))) {
@@ -251,9 +260,26 @@
   }
 
   // ---------- 画面 ----------
-  async function open(g, { gameFile, makeZip, offerFile, onChange, html5 }) {
+  const backendFor = (g, gameFile, html5, T) => (g.mode === "html5" ? html5Backend(g, html5, T) : wineBackend(g, gameFile, T));
+
+  // ゲームを今の状態のまま（元のファイル＋変更）まるごと ZIP にする。戻り値 { blob, users（_users に入れた数） }
+  async function downloadAll(g, { gameFile, html5 }, onProgress) {
+    const B = backendFor(g, gameFile, html5, L());
+    const { items } = await B.load();
+    const list = [];
+    let users = 0;
+    for (const [name, it] of items) {
+      const path = B.allPath(name);
+      if (!path) continue;
+      if (path.startsWith("_users/")) users++;
+      list.push(await B.zipItem(it, path));
+    }
+    return { blob: await buildZip(list, onProgress), users };
+  }
+
+  async function open(g, { gameFile, offerFile, onChange, html5 }) {
     const T = L();
-    const B = g.mode === "html5" ? html5Backend(g, html5, T) : wineBackend(g, gameFile, T);
+    const B = backendFor(g, gameFile, html5, T);
     if (!document.getElementById("fm-style")) {
       const st = document.createElement("style");
       st.id = "fm-style";
@@ -522,11 +548,11 @@
       try {
         for (const [name, it] of items) {
           if (!name.startsWith(prefix) || (changedOnly && it.state === "orig")) continue;
-          out.push({ name: name.slice(prefix.length), bytes: await B.read(it) });
+          out.push(await B.zipItem(it, name.slice(prefix.length)));
         }
         if (!out.length) return say(T.empty, true);
         const base = path.length > 1 ? path[path.length - 1] : rootInfo(path[0]).label;
-        await offerFile(makeZip(out), g.title + " - " + base + ".zip");
+        await offerFile(await buildZip(out), g.title + " - " + base + ".zip");
       } catch (e) {
         say(fmt(T.failed, { msg: e.message }), true);
       }
@@ -538,5 +564,5 @@
     render();
   }
 
-  window.FileManager = { open };
+  window.FileManager = { open, downloadAll };
 })();

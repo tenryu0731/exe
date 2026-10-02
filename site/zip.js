@@ -89,7 +89,7 @@ async function readZipIndex(file) {
         x += 4 + len;
       }
     }
-    entries.push({ cdPos: p, localOffset, method: cv.getUint16(p + 10, true), compSize, size: rawSize, name, dir: name.endsWith("/") });
+    entries.push({ cdPos: p, localOffset, method: cv.getUint16(p + 10, true), crc: cv.getUint32(p + 16, true), compSize, size: rawSize, name, dir: name.endsWith("/") });
     p += 46 + nameLen + extraLen + commentLen;
   }
   return { entries, needsRename, zip64, cd: { offset, size, eocdPos: tailStart + e } };
@@ -116,6 +116,81 @@ async function zipEntryBytes(file, e) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+// ---------- ZIP を作る ----------
+const ZIP_CRC = (() => {
+  const tbl = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    tbl[n] = c >>> 0;
+  }
+  return tbl;
+})();
+function crcUpdate(c, bytes) {
+  for (let i = 0; i < bytes.length; i++) c = ZIP_CRC[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return c;
+}
+async function crcOfBlob(blob) {
+  const reader = blob.stream().getReader();
+  let c = 0xffffffff;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    c = crcUpdate(c, value);
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// 大きなゲームでも中身をメモリに載せずに ZIP を作る（ファイル名は UTF-8、無圧縮か元の圧縮のまま）。
+// items: { name, bytes } / { name, get: () => Promise<Blob> } / { name, file, entry }（元の ZIP の項目を圧縮されたまま写す）
+// 4GB を超える ZIP（ZIP64）には対応しない
+async function buildZip(items, onProgress) {
+  const enc = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  const d = new Date();
+  const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  let n = 0;
+  for (const it of items) {
+    let body, crc, method = 0, size;
+    if (it.entry) {
+      const head = new DataView(await it.file.slice(it.entry.localOffset, it.entry.localOffset + 30).arrayBuffer());
+      const start = it.entry.localOffset + 30 + head.getUint16(26, true) + head.getUint16(28, true);
+      body = it.file.slice(start, start + it.entry.compSize);
+      crc = it.entry.crc; method = it.entry.method; size = it.entry.size;
+    } else if (it.get) {
+      body = await it.get();
+      crc = await crcOfBlob(body); size = body.size;
+    } else {
+      body = new Blob([it.bytes]);
+      crc = (crcUpdate(0xffffffff, it.bytes) ^ 0xffffffff) >>> 0; size = it.bytes.length;
+    }
+    const comp = body.size;
+    if (offset + comp > 0xfffffffe) throw new Error("4GB を超えるため ZIP にできません");
+    const name = enc.encode(it.name);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true); local.setUint16(8, method, true);
+    local.setUint16(10, dosTime, true); local.setUint16(12, dosDate, true);
+    local.setUint32(14, crc, true); local.setUint32(18, comp, true); local.setUint32(22, size, true); local.setUint16(26, name.length, true);
+    const cd = new DataView(new ArrayBuffer(46));
+    cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true); cd.setUint16(10, method, true);
+    cd.setUint16(12, dosTime, true); cd.setUint16(14, dosDate, true);
+    cd.setUint32(16, crc, true); cd.setUint32(20, comp, true); cd.setUint32(24, size, true);
+    cd.setUint16(28, name.length, true); cd.setUint32(42, offset, true);
+    parts.push(local.buffer, name, body);
+    central.push(cd.buffer, name);
+    offset += 30 + name.length + comp;
+    if (onProgress) onProgress(++n, items.length);
+  }
+  if (items.length > 0xffff) throw new Error("ファイルが多すぎるため ZIP にできません");
+  const cdSize = central.reduce((a, b) => a + b.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, items.length, true); end.setUint16(10, items.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
+}
 
 // exe のヘッダーを調べる。戻り値（文字列）:
 //   "x86" / "x64" / "arm64" … Windows（PE）の CPU
@@ -203,4 +278,5 @@ window.exeArch = exeArch;
 window.exeInfo = exeInfo;
 window.unsupportedEntry = unsupportedEntry;
 window.isJunkPath = isJunkPath;
+window.buildZip = buildZip;
 })();

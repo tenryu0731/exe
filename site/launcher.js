@@ -500,13 +500,27 @@ function renderCard(g) {
   const row = document.createElement("div");
   row.className = "row";
   row.style.marginTop = "12px";
-  // ファイル管理（filemgr.js）。閉じたらセーブ欄の表示を更新する
-  let saveBox = null;
-  const openFiles = () => FileManager.open(g, {
-    gameFile, makeZip, offerFile,
-    html5: { cacheName: HTML5_CACHE, ns: saveNs(g.id) },
-    onChange: () => { if (saveBox && saveBox.refresh) saveBox.refresh(); },
-  });
+  // ファイル管理（filemgr.js）と、今の状態のまま（元のファイル＋変更・セーブ）まるごと ZIP で保存
+  const fmOpts = { gameFile, offerFile, html5: { cacheName: HTML5_CACHE, ns: saveNs(g.id) } };
+  const openFiles = () => FileManager.open(g, fmOpts);
+  const dlStatus = document.createElement("p");
+  dlStatus.className = "status";
+  const downloadAll = async () => {
+    dl.disabled = true;
+    dlStatus.className = "status";
+    try {
+      const { blob, users } = await FileManager.downloadAll(g, fmOpts, (n, total) => {
+        dlStatus.textContent = t("lib.zipping", { n, total });
+      });
+      dlStatus.textContent = users ? t("lib.zippedUsers", { n: users }) : "";
+      await offerFile(blob, g.title + ".zip");
+    } catch (err) {
+      dlStatus.className = "status err";
+      dlStatus.textContent = t("lib.zipFailed", { msg: err.message });
+    }
+    dl.disabled = false;
+  };
+  const dl = button("lib.downloadAll", "", downloadAll);
   if (html5) {
     row.appendChild(button("lib.playHtml5", "primary grow", () => { location.href = "play/" + encodeURIComponent(g.id) + "/index.html"; }));
   } else {
@@ -538,12 +552,9 @@ function renderCard(g) {
     hint.textContent = t("lib.desktopHint");
     adv.append(desk, hint);
     card.appendChild(adv);
-    saveBox = wineSaveControls(g, openFiles);
     row.appendChild(play);
   }
-  if (html5) saveBox = saveControls(g);
-  card.appendChild(saveBox);
-  row.appendChild(button("lib.files", "", openFiles));
+  row.append(button("lib.files", "", openFiles), dl);
   row.appendChild(button("lib.delete", "danger", async () => {
     if (!confirm(t("lib.deleteConfirm", { title: g.title }))) return;
     await removeGameFile(g.id);
@@ -552,7 +563,7 @@ function renderCard(g) {
     saveMeta(loadMeta().filter((x) => x.id !== g.id));
     renderLibrary();
   }));
-  card.appendChild(row);
+  card.append(row, dlStatus);
   return card;
 }
 
@@ -585,85 +596,11 @@ function convertControls(g, k) {
   return box;
 }
 
-// ---------- セーブデータ（RPGツクールMV）の取り込み・書き出し ----------
+// ---------- セーブデータ（RPGツクールMV） ----------
 // MV はブラウザで動くとき localStorage の "RPG File<n>" / "RPG Global" / "RPG Config" にセーブする。
 // 値は PC 版の .rpgsave ファイルの中身（LZString.compressToBase64 した JSON）と同じ。
 // ゲーム側の localStorage は "exe:<id>:" で名前空間を分けている（sw.js の injectIntoIndex）。
 const saveNs = (id) => "exe:" + id + ":";
-
-function mvSaveKey(path) {
-  const base = path.split("/").pop().toLowerCase();
-  const m = /^file(\d+)\.rpgsave$/.exec(base);
-  if (m) return "RPG File" + Number(m[1]);
-  if (base === "global.rpgsave") return "RPG Global";
-  if (base === "config.rpgsave") return "RPG Config";
-  return null;
-}
-
-async function collectSaves(files) {
-  const found = [];
-  let mz = false;
-  for (const f of files) {
-    if (/\.zip$/i.test(f.name)) {
-      const idx = await readZipIndex(f);
-      for (const e of idx.entries) {
-        if (/\.rmmzsave$/i.test(e.name)) mz = true;
-        const key = !e.dir && mvSaveKey(e.name);
-        if (key) found.push({ key, name: e.name.split("/").pop(), text: new TextDecoder().decode(await zipEntryBytes(f, e)).trim() });
-      }
-    } else {
-      if (/\.rmmzsave$/i.test(f.name)) mz = true;
-      const key = mvSaveKey(f.name);
-      if (key) found.push({ key, name: f.name, text: (await f.text()).trim() });
-    }
-  }
-  if (!found.length && mz) throw new Error(t("save.mz"));
-  return found;
-}
-
-const CRC_TABLE = (() => {
-  const tbl = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    tbl[n] = c >>> 0;
-  }
-  return tbl;
-})();
-function crc32(bytes) {
-  let c = 0xffffffff;
-  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-// 無圧縮 ZIP を作る（ファイル名は UTF-8）
-function makeZip(items) {
-  const enc = new TextEncoder();
-  const parts = [];
-  const central = [];
-  let offset = 0;
-  for (const it of items) {
-    const name = enc.encode(it.name);
-    const data = it.bytes;
-    const crc = crc32(data);
-    const local = new DataView(new ArrayBuffer(30));
-    local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
-    local.setUint32(14, crc, true); local.setUint32(18, data.length, true); local.setUint32(22, data.length, true);
-    local.setUint16(26, name.length, true);
-    const cd = new DataView(new ArrayBuffer(46));
-    cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true);
-    cd.setUint32(16, crc, true); cd.setUint32(20, data.length, true); cd.setUint32(24, data.length, true);
-    cd.setUint16(28, name.length, true); cd.setUint32(42, offset, true);
-    parts.push(local.buffer, name, data);
-    central.push(cd.buffer, name);
-    offset += 30 + name.length + data.length;
-  }
-  const cdSize = central.reduce((a, b) => a + b.byteLength, 0);
-  const end = new DataView(new ArrayBuffer(22));
-  end.setUint32(0, 0x06054b50, true); end.setUint16(8, items.length, true); end.setUint16(10, items.length, true);
-  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
-  return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
-}
 
 // ファイルを端末に渡す（iPhone は共有シートで「ファイルに保存」など、それ以外はダウンロード）
 async function offerFile(blob, fileName) {
@@ -682,141 +619,6 @@ async function offerFile(blob, fileName) {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-}
-
-// Wine で動かすソフトのセーブ：変更したファイルをまとめて ZIP で保存・復元する。
-// 個別のファイルはカードの「ファイル」（filemgr.js）で扱う
-function wineSaveControls(g, openManager) {
-  const W = window.WineSaves;
-  const box = document.createElement("details");
-  const sum = document.createElement("summary");
-  sum.textContent = t("ws.title");
-  const st = document.createElement("p");
-  st.className = "status";
-  const input = document.createElement("input");
-  input.type = "file"; input.hidden = true; input.accept = ".zip,application/zip";
-  let files = [];
-
-  const refresh = async () => {
-    try {
-      files = await W.changedFiles(g.id);
-    } catch (err) {
-      st.className = "status err";
-      st.textContent = t("ws.readFailed", { msg: err.message });
-      return;
-    }
-    const inGame = files.filter((f) => f.name.startsWith("C/files/")).length;
-    st.className = "status";
-    st.textContent = files.length ? t("ws.count", { n: files.length, game: inGame }) : t("ws.none");
-  };
-
-  const exportAll = async () => {
-    await refresh();
-    if (!files.length) { st.className = "status err"; st.textContent = t("ws.nothing"); return; }
-    await offerFile(makeZip(await W.readFiles(g.id, files)), g.title + " backup.zip");
-  };
-
-  input.addEventListener("change", async () => {
-    const file = input.files[0];
-    input.value = "";
-    if (!file) return;
-    try {
-      const idx = await readZipIndex(file);
-      const entries = idx.entries.filter((e) => !e.dir && !isJunkPath(e.name));
-      // バックアップの形（C/… D/… registry/user.reg）でなければ、ファイル管理で置き場所を選んでもらう
-      if (!entries.length || !entries.every((e) => W.importKey(e.name))) {
-        st.className = "status err";
-        st.textContent = t("ws.notBackup");
-        openManager();
-        return;
-      }
-      if (!confirm(t("ws.confirm", { n: entries.length, names: entries.slice(0, 12).map((e) => e.name).join("\n") }))) return;
-      const out = [];
-      for (const e of entries) out.push(Object.assign({ bytes: await zipEntryBytes(file, e) }, W.importKey(e.name)));
-      await W.writeFiles(g.id, out);
-      await refresh();
-      st.className = "status ok";
-      st.textContent = t("ws.imported", { n: out.length });
-    } catch (err) {
-      st.className = "status err";
-      st.textContent = t("ws.importFailed", { msg: err.message });
-    }
-  });
-
-  const row = document.createElement("div");
-  row.className = "row";
-  row.style.marginTop = "8px";
-  row.append(button("ws.export", "grow", exportAll), button("ws.import", "grow", () => input.click()));
-  const hint = document.createElement("p");
-  hint.className = "hint";
-  hint.textContent = t("ws.hint");
-  box.append(sum, st, row, hint, input);
-  let loaded = false;
-  box.addEventListener("toggle", () => { if (box.open && !loaded) { loaded = true; refresh(); } });
-  box.refresh = () => { if (loaded) refresh(); };
-  return box;
-}
-
-// ブラウザで直接動くゲーム（ツクール MV）のセーブ：localStorage と .rpgsave（ZIP）のやり取り
-function saveControls(g) {
-  const box = document.createElement("details");
-  const sum = document.createElement("summary");
-  sum.textContent = t("ws.title");
-  const row = document.createElement("div");
-  row.className = "row";
-  row.style.marginTop = "8px";
-  const input = document.createElement("input");
-  input.type = "file"; input.multiple = true; input.hidden = true;
-  input.accept = ".zip,.rpgsave,application/zip,application/octet-stream";
-  const st = document.createElement("p");
-  st.className = "status";
-  const ns = saveNs(g.id);
-  const current = () => {
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(ns + "RPG ")) keys.push(k.slice(ns.length));
-    }
-    return keys.sort();
-  };
-  const showCount = () => {
-    const n = current().filter((k) => /^RPG File/.test(k)).length;
-    st.className = "status";
-    st.textContent = n ? t("save.count", { n }) : t("save.none");
-  };
-  input.addEventListener("change", async () => {
-    const files = [...input.files];
-    input.value = "";
-    if (!files.length) return;
-    try {
-      const saves = await collectSaves(files);
-      if (!saves.length) throw new Error(t("save.notFound"));
-      const overwrite = saves.filter((x) => localStorage.getItem(ns + x.key) !== null).map((x) => x.name);
-      if (overwrite.length && !confirm(t("save.overwrite", { names: overwrite.join("\n") }))) return;
-      for (const x of saves) localStorage.setItem(ns + x.key, x.text);
-      showCount();
-      st.className = "status ok";
-      st.textContent = t("save.imported", { names: saves.map((x) => x.name).join(", ") });
-    } catch (err) {
-      st.className = "status err";
-      st.textContent = t("save.importFailed", { msg: err.message });
-    }
-  });
-  const exp = async () => {
-    const keys = current();
-    if (!keys.length) { st.className = "status err"; st.textContent = t("save.nothing"); return; }
-    const enc = new TextEncoder();
-    const items = keys.map((k) => {
-      const name = k === "RPG Global" ? "global.rpgsave" : k === "RPG Config" ? "config.rpgsave" : "file" + k.replace("RPG File", "") + ".rpgsave";
-      return { name: "save/" + name, bytes: enc.encode(localStorage.getItem(ns + k)) };
-    });
-    await offerFile(makeZip(items), g.title + " save.zip");
-  };
-  row.append(button("save.import", "grow", () => input.click()), button("save.export", "grow", exp));
-  box.append(sum, st, row, input);
-  box.refresh = showCount;
-  showCount();
-  return box;
 }
 
 // ---------- 起動 ----------
