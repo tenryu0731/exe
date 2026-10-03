@@ -2,7 +2,8 @@
 // Service Worker が index.html に差し込む（vkeys.js の後）。キーボードは Windows・DOS の画面と同じ vkeys.js で、
 // よく使うキーの追加・並べ替え・大きさの変更、全キー、全画面が使える。
 // MV/MZ は document の keydown/keyup の keyCode を見るので、keyCode 付きの KeyboardEvent を document に送る。
-// キーボードを出している間は、ゲーム画面がその上の領域に収まるよう、ゲームから見える画面の高さを減らす。
+// キーは既定でゲーム画面に半透明で重ねる。「下に並べる」表示（と編集中）は、ゲーム画面がキーボードの上の領域に
+// 収まるよう、ゲームから見える画面の高さを減らす。
 (function () {
   "use strict";
 
@@ -67,7 +68,7 @@
       storageId: "html5:" + id, group: "html5", defaults: DEFAULTS, hints: L.hints,
     });
     const measure = () => {
-      const h = keypad.root.classList.contains("vk-hidden") ? 0 : holder.getBoundingClientRect().height;
+      const h = keypad.docked() ? holder.getBoundingClientRect().height : 0;
       if (h === kbHeight) return false;
       kbHeight = h;
       document.documentElement.style.setProperty("--xp-kb", h + "px");

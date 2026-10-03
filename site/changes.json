@@ -2,11 +2,13 @@
   {
     "date": "2026-10-03",
     "items": [
+      "画面上のキーを、ゲーム画面に半透明で重ねる表示に（既定）。ゲーム画面を最大にし、十字キーは左下・他のキーは右下に置きます。キーのない場所のタッチはゲームに届きます。編集の「表示」で、従来の「下に並べる」表示にも戻せます",
       "画面上のキーボードに十字キーを追加（ツクール・Windows・DOS 共通）。矢印を十字に並べ、指を滑らせて向きを変えたり斜めに押したりできます。編集の「十字キー」で出し入れ。4 つの矢印を並べていた設定は一度だけ十字キーに置き換えます",
       "ツクールのゲームで、キーボードの設定がゲームのセーブと同じ場所に保存されていたのを修正（ゲーム間で直近の並びを共有するように）",
       "横向きで編集画面が画面からはみ出して「完了」を押せないことがあったのを修正"
     ],
     "items_en": [
+      "On-screen keys now overlay the game semi-transparently (default), so the game uses the whole screen: D-pad bottom-left, other keys bottom-right; touches outside the keys reach the game. \"Layout\" in Edit switches back to keys below the game",
       "The on-screen keyboard has a D-pad (RPG Maker, Windows and DOS alike): arrows in a cross, slide to change direction, diagonals supported. Toggle it with \"D-pad\" in Edit. Layouts with all four arrows are converted to the D-pad once",
       "RPG Maker games: keyboard settings were stored alongside the game's saves; they are now kept separately and the latest layout is shared between games",
       "The edit panel no longer overflows the screen in landscape (Done is reachable)"

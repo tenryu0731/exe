@@ -4,6 +4,8 @@
 //  - 十字キー：矢印キーを十字に並べたもの。指を滑らせて向きを変えられ、斜め（2 キー同時）も押せる。よく使うキーの左側に出す
 //  - 全キー：F1〜F12・英数字・記号・矢印・Ins/Del/Home/End/PgUp/PgDn・テンキーまで、PC のキーボード一式
 //  - Shift・Ctrl・Alt・Win：軽くタップすると「次のキー 1 回だけ」押した状態になり、長押しするとその間押しっぱなし
+//  - 重ねる表示（既定）：キーを半透明にしてゲーム画面の上に重ね、ゲーム画面を最大にする（十字キーは左下、他は右下）。
+//    編集の「表示」で、ゲーム画面の下に並べる表示に切り替えられる
 //  - 全画面：上部のバーなどを隠してゲーム画面を最大にする。対応ブラウザでは本当の全画面にもする
 //
 // 使い方：VKeys.mount({ parent, send(def, down), storageId, lang, defaults, group, hints })。def は KEYS の要素
@@ -87,12 +89,12 @@
 
   const T = {
     ja: { all: "全キー", edit: "編集", done: "完了", reset: "初期に戻す", main: "メイン", nav: "矢印・テンキー",
-      editTitle: "よく使うキーを編集", dpad: "十字キー",
+      editTitle: "よく使うキーを編集", dpad: "十字キー", layout: "表示", layouts: ["重ねる", "下に並べる"],
       editHint: "ドラッグで並べ替え、× で外す。下の全キーを押すと追加（もう一度押すと外れる）。",
       size: "大きさ", sizes: ["小", "中", "大"], empty: "キーがありません。下の全キーから追加してください",
       fullscreen: "全画面", exitFullscreen: "全画面を終了", keys: "キー", remove: "外す" },
     en: { all: "All keys", edit: "Edit", done: "Done", reset: "Reset", main: "Main", nav: "Arrows & keypad",
-      editTitle: "Edit quick keys", dpad: "D-pad",
+      editTitle: "Edit quick keys", dpad: "D-pad", layout: "Layout", layouts: ["Overlay", "Below"],
       editHint: "Drag to reorder, × to remove. Tap a key below to add it (tap again to remove).",
       size: "Size", sizes: ["S", "M", "L"], empty: "No keys yet. Add some from the keyboard below",
       fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen", keys: "Keys", remove: "Remove" },
@@ -148,6 +150,21 @@
   .vk.vk-editing .vk-quick .vk-x { display: block; }
   .vk.vk-editing .vk-full button.vk-picked { background: #3a4a2a; border-color: #ffcf4a; box-shadow: inset 0 0 0 1px #ffcf4a; }
 
+  /* 重ねる表示：ゲーム画面の上に半透明で置く。キー以外の場所のタッチはゲームに届く */
+  .vk.vk-overlay:not(.vk-editing) { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: transparent; border-top: 0;
+    pointer-events: none; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+  .vk.vk-overlay:not(.vk-editing) .vk-main { justify-content: space-between; align-items: flex-end; }
+  .vk.vk-overlay:not(.vk-editing) .vk-quick { flex: 0 1 auto; max-width: 60%; display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; }
+  .vk.vk-overlay:not(.vk-editing) .vk-quick button { width: var(--vk-w); }
+  .vk.vk-overlay:not(.vk-editing) .vk-quick button.vk-tool { width: auto; min-height: 30px; padding: 0 8px; font-size: 12px; align-self: flex-end; }
+  .vk.vk-overlay:not(.vk-editing) button, .vk.vk-overlay:not(.vk-editing) .vk-dpad,
+  .vk.vk-overlay:not(.vk-editing) .vk-full { pointer-events: auto; }
+  .vk.vk-overlay:not(.vk-editing) button { background: rgba(16, 20, 26, .35); border-color: rgba(255, 255, 255, .55); text-shadow: 0 1px 2px #000; }
+  .vk.vk-overlay:not(.vk-editing) button.vk-down, .vk.vk-overlay:not(.vk-editing) button.vk-latched { background: rgba(63, 111, 216, .75); }
+  .vk.vk-overlay:not(.vk-editing) .vk-dpad-c { background: rgba(16, 20, 26, .25); border-color: rgba(255, 255, 255, .4); }
+  .vk.vk-overlay:not(.vk-editing) .vk-hint { color: #fff; }
+  .vk.vk-overlay:not(.vk-editing) .vk-full { background: rgba(28, 35, 43, .94); border-radius: 8px; padding: 6px; }
+  .vk.vk-overlay:not(.vk-editing) .vk-full button { background: #2b3540; text-shadow: none; }
   .vk-full { margin-top: 6px; }
   .vk-full.vk-hidden { display: none; }
   .vk-tabs { display: flex; gap: 5px; margin-bottom: 5px; }
@@ -201,12 +218,14 @@
     const save = () => { store.set(storeKey, quick); store.set(sharedKey, quick); }; // 新しいゲームは直近の並びで始める
     let quick = load();
     let editing = false;
+    let overlay = store.get("exe-vkeys-overlay") !== false;
     let size = store.get("exe-vkeys-size");
     if (![0, 1, 2].includes(size)) size = 1;
 
     const root = document.createElement("div");
     root.className = "vk";
     root.dataset.size = String(size);
+    root.classList.toggle("vk-overlay", overlay);
     const head = document.createElement("div");
     head.className = "vk-edit-head";
     const mainEl = document.createElement("div");
@@ -385,7 +404,18 @@
         save(); renderHead(); renderQuick(); paintAll(); window.dispatchEvent(new Event("resize"));
       });
       dp.setAttribute("aria-pressed", String(quick.includes(DPAD)));
-      top.append(title, dp, seg,
+      const lay = document.createElement("span");
+      lay.className = "vk-seg";
+      lay.setAttribute("aria-label", L.layout);
+      L.layouts.forEach((label, i) => {
+        const b = tool(label, () => {
+          overlay = i === 0; store.set("exe-vkeys-overlay", overlay); root.classList.toggle("vk-overlay", overlay);
+          renderHead(); window.dispatchEvent(new Event("resize"));
+        });
+        b.setAttribute("aria-pressed", String(overlay === (i === 0)));
+        lay.appendChild(b);
+      });
+      top.append(title, dp, lay, seg,
         tool(L.reset, () => { quick = initial.slice(); save(); renderHead(); renderQuick(); paintAll(); window.dispatchEvent(new Event("resize")); }),
         tool(L.done, () => setEditing(false), "vk-primary"));
       const hint = document.createElement("p");
@@ -531,6 +561,8 @@
 
     return {
       root,
+      // ゲーム画面の領域を占めているか（重ねる表示では編集中だけ占める）
+      docked: () => !root.classList.contains("vk-hidden") && (!overlay || editing),
       toggle() { root.classList.toggle("vk-hidden"); window.dispatchEvent(new Event("resize")); },
       hide(v) { root.classList.toggle("vk-hidden", v); window.dispatchEvent(new Event("resize")); },
     };
