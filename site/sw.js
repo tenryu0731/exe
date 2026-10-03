@@ -203,6 +203,8 @@ function injectIntoIndex(html, id) {
     "s.getItem=function(k){return g.call(this,p+k)};" +
     "s.setItem=function(k,v){return t.call(this,p+k,v)};" +
     "s.removeItem=function(k){return r.call(this,p+k)};" +
+    // ランチャー側の設定（画面上のキーの並びなど）は名前空間の外に読み書きする
+    "window.__exeStorage={get:function(k){return g.call(localStorage,k)},set:function(k,v){return t.call(localStorage,k,v)}};" +
     // ツクール MV/MZ はブラウザで動くとき、セーブに記録されたタイトルが今のゲームのタイトルと完全に一致しないと
     // そのセーブを無いものとして扱う（PC 版はこの確認をしない）。PC から移したセーブや、タイトルが変わった版でも
     // 読めるよう、PC 版と同じく「セーブがあれば使える」にする。プラグインの読み込み後（load）に差し替える

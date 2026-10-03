@@ -1,6 +1,7 @@
 // 画面上のキーボード（エミュレーター画面・DOS 画面で共用）
 //
 //  - よく使うキー：画面下に常に出す数個のキー。「編集」でゲームごとに追加・削除・ドラッグで並べ替え・大きさの変更ができる（端末内に保存）
+//  - 十字キー：矢印キーを十字に並べたもの。指を滑らせて向きを変えられ、斜め（2 キー同時）も押せる。よく使うキーの左側に出す
 //  - 全キー：F1〜F12・英数字・記号・矢印・Ins/Del/Home/End/PgUp/PgDn・テンキーまで、PC のキーボード一式
 //  - Shift・Ctrl・Alt・Win：軽くタップすると「次のキー 1 回だけ」押した状態になり、長押しするとその間押しっぱなし
 //  - 全画面：上部のバーなどを隠してゲーム画面を最大にする。対応ブラウザでは本当の全画面にもする
@@ -79,17 +80,19 @@
     ["", "", "", "", "Numpad0", "", "", ""],
   ];
   const WIDE = { Backspace: 1.6, Tab: 1.4, CapsLock: 1.6, Enter: 1.8, ShiftLeft: 2, Space: 5, ControlLeft: 1.3, AltLeft: 1.3, MetaLeft: 1.2 };
-  const DEFAULT_QUICK = ["Escape", "ArrowUp", "Enter", "KeyZ", "KeyX", "KeyC", "ArrowLeft", "ArrowDown", "ArrowRight", "Space",
+  const DPAD = "DPad"; // よく使うキーの並びに入れる「十字キー」の印
+  const ARROWS = ["ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"];
+  const DEFAULT_QUICK = [DPAD, "Escape", "Enter", "KeyZ", "KeyX", "KeyC", "Space",
     "ShiftLeft", "ControlLeft", "Tab", "AltLeft", "Backspace", "F1", "F5", "F12"];
 
   const T = {
     ja: { all: "全キー", edit: "編集", done: "完了", reset: "初期に戻す", main: "メイン", nav: "矢印・テンキー",
-      editTitle: "よく使うキーを編集",
+      editTitle: "よく使うキーを編集", dpad: "十字キー",
       editHint: "ドラッグで並べ替え、× で外す。下の全キーを押すと追加（もう一度押すと外れる）。",
       size: "大きさ", sizes: ["小", "中", "大"], empty: "キーがありません。下の全キーから追加してください",
       fullscreen: "全画面", exitFullscreen: "全画面を終了", keys: "キー", remove: "外す" },
     en: { all: "All keys", edit: "Edit", done: "Done", reset: "Reset", main: "Main", nav: "Arrows & keypad",
-      editTitle: "Edit quick keys",
+      editTitle: "Edit quick keys", dpad: "D-pad",
       editHint: "Drag to reorder, × to remove. Tap a key below to add it (tap again to remove).",
       size: "Size", sizes: ["S", "M", "L"], empty: "No keys yet. Add some from the keyboard below",
       fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen", keys: "Keys", remove: "Remove" },
@@ -106,6 +109,20 @@
   .vk button { color: #f2f5f8; background: #2b3540; border: 1px solid #46525f; border-radius: 7px; font: inherit; padding: 0 2px;
     -webkit-tap-highlight-color: transparent; touch-action: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .vk button.vk-down, .vk button.vk-latched { background: #3f6fd8; border-color: #6f95e8; }
+  .vk-main { display: flex; gap: 8px; align-items: flex-start; }
+  .vk-main .vk-quick { flex: 1; min-width: 0; }
+  .vk-dpad { flex: 0 0 auto; position: relative; display: grid; grid-template-columns: repeat(3, calc(var(--vk-h) * 1.15));
+    grid-template-rows: repeat(3, var(--vk-h)); gap: 3px; touch-action: none; }
+  .vk-dpad[hidden] { display: none; }
+  .vk-dpad button { min-height: 0; font-size: calc(var(--vk-fs) + 3px); pointer-events: none; }
+  .vk-dpad [data-id=ArrowUp] { grid-column: 2; grid-row: 1; }
+  .vk-dpad [data-id=ArrowLeft] { grid-column: 1; grid-row: 2; }
+  .vk-dpad [data-id=ArrowRight] { grid-column: 3; grid-row: 2; }
+  .vk-dpad [data-id=ArrowDown] { grid-column: 2; grid-row: 3; }
+  .vk-dpad .vk-dpad-c { grid-column: 2; grid-row: 2; border-radius: 50%; margin: 22%; background: #222b34; border: 1px solid #46525f; }
+  .vk-dpad .vk-x { pointer-events: auto; }
+  .vk.vk-editing .vk-dpad { outline: 1px dashed #8aa0b6; outline-offset: 2px; border-radius: 6px; }
+  .vk.vk-editing .vk-dpad .vk-x { display: block; }
   .vk-quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--vk-w), 1fr)); gap: 5px; }
   .vk-quick button { min-height: var(--vk-h); position: relative; }
   .vk-hint { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 500; color: #c9d6e3; overflow: hidden; text-overflow: ellipsis; }
@@ -159,15 +176,25 @@
     }
     const storeKey = "exe-vkeys:" + (storageId || "default");
     const sharedKey = "exe-vkeys:default" + (group ? ":" + group : "");
-    const initial = (defaults || DEFAULT_QUICK).filter((id) => BY_ID.has(id));
+    const initial = (defaults || DEFAULT_QUICK).filter((id) => id === DPAD || BY_ID.has(id));
+    // ブラウザで直接動くゲームでは localStorage がゲームごとの名前空間に入れられているので、その外を使う（sw.js）
+    const raw = window.__exeStorage || { get: (k) => localStorage.getItem(k), set: (k, v) => localStorage.setItem(k, v) };
     const store = {
-      get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
-      set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+      get(k) { try { return JSON.parse(raw.get(k) || "null"); } catch (e) { return null; } },
+      set(k, v) { try { raw.set(k, JSON.stringify(v)); } catch (e) {} },
     };
     const load = () => {
       for (const k of [storeKey, sharedKey]) {
-        const v = store.get(k);
-        if (Array.isArray(v)) return v.filter((id) => BY_ID.has(id));
+        let v = store.get(k);
+        if (!Array.isArray(v)) continue;
+        v = v.filter((id) => id === DPAD || BY_ID.has(id));
+        // 十字キーができる前に保存した並び：4 つの矢印がそろっていれば一度だけ十字キーに置き換える
+        if (!v.includes(DPAD) && ARROWS.every((a) => v.includes(a)) && !store.get(k + ":dpad")) {
+          v = [DPAD].concat(v.filter((id) => !ARROWS.includes(id)));
+          store.set(k, v);
+        }
+        store.set(k + ":dpad", 1);
+        return v;
       }
       return initial.slice();
     };
@@ -182,11 +209,16 @@
     root.dataset.size = String(size);
     const head = document.createElement("div");
     head.className = "vk-edit-head";
+    const mainEl = document.createElement("div");
+    mainEl.className = "vk-main";
+    const dpadEl = document.createElement("div");
+    dpadEl.className = "vk-dpad";
     const quickEl = document.createElement("div");
     quickEl.className = "vk-quick";
+    mainEl.append(dpadEl, quickEl);
     const full = document.createElement("div");
     full.className = "vk-full vk-hidden";
-    root.append(head, quickEl, full);
+    root.append(head, mainEl, full);
     parent.appendChild(root);
 
     // ---- 押下の状態 ----
@@ -209,6 +241,14 @@
       for (const [id, n] of held) if (n > 0) { held.set(id, 0); press(id, false); }
       releaseLatched();
       paintAll();
+    };
+    // 修飾キー以外の 1 キー分の押下（十字キーから使う）
+    const hold = (id, down) => {
+      const n = held.get(id) || 0;
+      held.set(id, Math.max(0, n + (down ? 1 : -1)));
+      if (down && n === 0) press(id, true);
+      if (!down && n === 1) { press(id, false); releaseLatched(); }
+      paint(id);
     };
     function forget(container) {
       for (const [id, list] of buttonsById) buttonsById.set(id, list.filter((b) => !container.contains(b)));
@@ -308,7 +348,7 @@
       if (!drag) return;
       drag.b.classList.remove("vk-dragging");
       if (drag.moved) {
-        quick = [...quickEl.querySelectorAll("button.vk-key")].map((k) => k.dataset.id);
+        quick = (quick.includes(DPAD) ? [DPAD] : []).concat([...quickEl.querySelectorAll("button.vk-key")].map((k) => k.dataset.id));
         save();
       }
       drag = null;
@@ -340,8 +380,13 @@
         b.setAttribute("aria-pressed", String(size === i));
         seg.appendChild(b);
       });
-      top.append(title, seg,
-        tool(L.reset, () => { quick = initial.slice(); save(); renderQuick(); paintAll(); }),
+      const dp = tool((quick.includes(DPAD) ? "✓ " : "＋ ") + L.dpad, () => {
+        quick = quick.includes(DPAD) ? quick.filter((x) => x !== DPAD) : [DPAD].concat(quick);
+        save(); renderHead(); renderQuick(); paintAll(); window.dispatchEvent(new Event("resize"));
+      });
+      dp.setAttribute("aria-pressed", String(quick.includes(DPAD)));
+      top.append(title, dp, seg,
+        tool(L.reset, () => { quick = initial.slice(); save(); renderHead(); renderQuick(); paintAll(); window.dispatchEvent(new Event("resize")); }),
         tool(L.done, () => setEditing(false), "vk-primary"));
       const hint = document.createElement("p");
       hint.className = "vk-edit-hint";
@@ -349,10 +394,76 @@
       head.append(top, hint);
     }
 
+    // 十字キー：一つの面で指の位置から向きを決める（中央付近は無入力、斜めは 2 キー）
+    let dpadDirs = new Set();
+    let dpadPointer = null;
+    function setDirs(next) {
+      for (const id of dpadDirs) if (!next.has(id)) hold(id, false);
+      for (const id of next) if (!dpadDirs.has(id)) hold(id, true);
+      dpadDirs = next;
+    }
+    function dirsAt(e) {
+      const r = dpadEl.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2);
+      const dy = e.clientY - (r.top + r.height / 2);
+      const out = new Set();
+      if (Math.hypot(dx, dy) < Math.min(r.width, r.height) * 0.12) return out;
+      const a = (Math.atan2(dy, dx) * 180) / Math.PI; // 右 0°、下 90°
+      if (a > -67.5 && a < 67.5) out.add("ArrowRight");
+      if (a > 112.5 || a < -112.5) out.add("ArrowLeft");
+      if (a > 22.5 && a < 157.5) out.add("ArrowDown");
+      if (a < -22.5 && a > -157.5) out.add("ArrowUp");
+      return out;
+    }
+    dpadEl.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (editing || dpadPointer !== null) return;
+      dpadPointer = e.pointerId;
+      try { dpadEl.setPointerCapture(e.pointerId); } catch (err) {}
+      setDirs(dirsAt(e));
+    });
+    dpadEl.addEventListener("pointermove", (e) => { if (e.pointerId === dpadPointer) setDirs(dirsAt(e)); });
+    const dpadUp = (e) => { if (e.pointerId !== dpadPointer) return; dpadPointer = null; setDirs(new Set()); };
+    dpadEl.addEventListener("pointerup", dpadUp);
+    dpadEl.addEventListener("pointercancel", dpadUp);
+    dpadEl.addEventListener("lostpointercapture", dpadUp);
+    dpadEl.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    function renderDpad() {
+      forget(dpadEl);
+      dpadEl.innerHTML = "";
+      dpadEl.hidden = !quick.includes(DPAD);
+      if (dpadEl.hidden) return;
+      for (const id of ARROWS) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "vk-key";
+        b.dataset.id = id;
+        b.tabIndex = -1;
+        b.textContent = BY_ID.get(id).label;
+        if (!buttonsById.has(id)) buttonsById.set(id, []);
+        buttonsById.get(id).push(b);
+        dpadEl.appendChild(b);
+      }
+      const c = document.createElement("span");
+      c.className = "vk-dpad-c";
+      const x = document.createElement("span");
+      x.className = "vk-x";
+      x.textContent = "×";
+      x.setAttribute("aria-label", L.remove);
+      x.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        quick = quick.filter((id) => id !== DPAD);
+        save(); renderHead(); renderQuick(); paintAll(); window.dispatchEvent(new Event("resize"));
+      });
+      dpadEl.append(c, x);
+    }
+
     function renderQuick() {
+      renderDpad();
       forget(quickEl);
       quickEl.innerHTML = "";
-      for (const id of quick) quickEl.appendChild(keyButton(id, true));
+      for (const id of quick) if (id !== DPAD) quickEl.appendChild(keyButton(id, true));
       if (!quick.length) {
         const p = document.createElement("p");
         p.className = "vk-empty";
@@ -395,6 +506,8 @@
     }
     let fullWasOpen = false;
     function setEditing(on) {
+      setDirs(new Set());
+      dpadPointer = null;
       releaseAll(); // 編集に入る前に押しっぱなしのキーを離す
       editing = on;
       root.classList.toggle("vk-editing", on);
@@ -465,5 +578,5 @@
     return { enter: () => set(true), exit: () => set(false), label: L.fullscreen };
   }
 
-  window.VKeys = { mount, fullscreen, KEYS, BY_ID };
+  window.VKeys = { mount, fullscreen, KEYS, BY_ID, DPAD };
 })();

@@ -15,7 +15,7 @@
     : { back: "← 戻る", keys: "キー", full: "全画面", confirm: "ライブラリに戻りますか？ セーブしていない進行は失われます。",
         hints: { KeyZ: "決定", KeyX: "取消", ShiftLeft: "ダッシュ", Escape: "メニュー", KeyQ: "前ページ", KeyW: "次ページ" } };
   // ツクールで使うキー（初期の並び）
-  const DEFAULTS = ["ArrowLeft", "ArrowUp", "ArrowDown", "ArrowRight", "KeyZ", "KeyX", "ShiftLeft", "Escape", "KeyQ", "KeyW"];
+  const DEFAULTS = ["DPad", "KeyZ", "KeyX", "ShiftLeft", "Escape", "KeyQ", "KeyW"];
 
   function send(def, down) {
     const ev = new KeyboardEvent(down ? "keydown" : "keyup", { key: def.key, code: def.code, bubbles: true, cancelable: true });
@@ -38,12 +38,12 @@
   const css = `
   html { height: calc(100% - var(--xp-kb, 0px)) !important; }
   body { height: 100% !important; position: relative; }
-  #xp-kb { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483646; }
+  #xp-kb { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483646; max-height: 100vh; overflow-y: auto; }
   #xp-top { position: fixed; top: max(4px, env(safe-area-inset-top)); right: max(6px, env(safe-area-inset-right));
     z-index: 2147483647; display: flex; gap: 6px; }
   #xp-top button { min-width: 36px; height: 32px; padding: 0 10px; border-radius: 16px; background: rgba(0, 0, 0, .6); color: #fff;
     border: 1px solid rgba(255, 255, 255, .6); font: 600 13px/30px -apple-system, "Hiragino Sans", sans-serif; }
-  body.vk-immersive #xp-top { display: none; }
+  body.vk-immersive #xp-top, body:has(.vk-editing) #xp-top { display: none; }
   `;
 
   // キーボードへのタッチがゲーム側の TouchInput（document で待ち受け）に届かないようにする
